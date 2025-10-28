@@ -33,6 +33,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000', 
     'http://localhost:5173',
+    'https://ncip-frontend-3w3ofutw5-cheycss-projects.vercel.app', // Production Vercel URL
     /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:3000$/, // Allow any 192.168.x.x:3000
     /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:5173$/, // Allow any 192.168.x.x:5173
     /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:3000$/, // Allow any 10.x.x.x:3000
