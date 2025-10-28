@@ -116,14 +116,4 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`📄 PDF download: http://localhost:${PORT}/api/pdf/coc-form`);
-  console.log(`🧪 Test auto-cancel: http://localhost:${PORT}/api/test/auto-cancel`);
-  console.log(`🧪 Test warnings: http://localhost:${PORT}/api/test/deadline-warnings`);
-  
-  // Initialize cron jobs (DISABLED - database schema needs update)
-  // initializeScheduler();
-  console.log('⚠️  Cron jobs disabled - database schema needs update');
-});
+export default app;
