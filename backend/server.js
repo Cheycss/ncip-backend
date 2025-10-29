@@ -23,7 +23,7 @@ import certificatesRoutes from './routes/certificates.js';
 import initializeScheduler from './jobs/scheduler.js';
 import { autoCancelOverdueApplications, sendDeadlineWarnings } from './jobs/autoCancelApplications.js';
 
-dotenv.config({ path: './backend/.env' });
+dotenv.config({ path: './.env' });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -114,6 +114,13 @@ app.use((err, req, res, next) => {
     message: 'Internal server error',
     error: err.message
   });
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 Frontend URL: ${process.env.FRONTEND_URL}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 export default app;
