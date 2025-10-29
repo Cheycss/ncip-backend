@@ -28,20 +28,19 @@ dotenv.config({ path: './.env' });
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware - Allow network access (temporarily permissive for debugging)
-app.use(cors({
-  origin: function (origin, callback) {
-    console.log('CORS Origin:', origin);
-    callback(null, true); // Allow all origins
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  optionsSuccessStatus: 200
-}));
-
-// Add explicit OPTIONS handler for preflight requests
-app.options('*', cors());
+// Middleware - Simple CORS fix
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
 // Increase payload limit for file uploads (birth certificates, avatars, etc.)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -72,6 +71,15 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     success: true, 
     message: 'NCIP Backend Server is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test auth endpoint
+app.get('/api/auth/test', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Auth route is working',
     timestamp: new Date().toISOString()
   });
 });
