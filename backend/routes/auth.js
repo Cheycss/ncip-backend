@@ -51,7 +51,7 @@ router.post('/register', async (req, res) => {
     // Insert into user_registrations table
     const result = await pool.query(
       `INSERT INTO user_registrations 
-       (first_name, last_name, display_name, email, phone_number, address, ethnicity, password, birth_certificate_data, status) 
+       (first_name, last_name, display_name, email, phone_number, address, ethnicity, password, birth_certificate_data, registration_status) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
       [first_name, last_name, display_name, email, phone_number, address, ethnicity, password_hash, birth_certificate_data]
     );
@@ -94,7 +94,7 @@ router.post('/login', async (req, res) => {
     if (users.rows.length === 0) {
       // Check if user is pending approval
       const pendingUsers = await pool.query(
-        'SELECT * FROM user_registrations WHERE email = $1 AND status = $2',
+        'SELECT * FROM user_registrations WHERE email = $1 AND registration_status = $2',
         [email, 'pending']
       );
 
