@@ -32,12 +32,12 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if email already exists in user_registrations
-    const [existingReg] = await pool.query(
-      'SELECT * FROM user_registrations WHERE email = ?',
+    const existingReg = await pool.query(
+      'SELECT * FROM user_registrations WHERE email = $1',
       [email]
     );
 
-    if (existingReg.length > 0) {
+    if (existingReg.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'Email already registered'
@@ -49,17 +49,17 @@ router.post('/register', async (req, res) => {
     const password_hash = await bcrypt.hash(password, salt);
 
     // Insert into user_registrations table
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO user_registrations 
-       (first_name, last_name, display_name, email, phone_number, address, ethnicity, password_hash, birth_certificate_data, registration_status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+       (first_name, last_name, display_name, email, phone_number, address, ethnicity, password, birth_certificate_data, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
       [first_name, last_name, display_name, email, phone_number, address, ethnicity, password_hash, birth_certificate_data]
     );
 
     res.status(201).json({
       success: true,
       message: 'Registration submitted successfully. Awaiting admin approval.',
-      registration_id: result.insertId
+      registration_id: result.rows[0].id
     });
 
   } catch (error) {
@@ -86,19 +86,19 @@ router.post('/login', async (req, res) => {
     }
 
     // Find approved user in users table
-    const [users] = await pool.query(
-      'SELECT * FROM users WHERE email = ? AND is_approved = TRUE AND is_active = TRUE',
+    const users = await pool.query(
+      'SELECT * FROM users WHERE email = $1 AND is_approved = TRUE AND is_active = TRUE',
       [email]
     );
 
-    if (users.length === 0) {
+    if (users.rows.length === 0) {
       // Check if user is pending approval
-      const [pendingUsers] = await pool.query(
-        'SELECT * FROM user_registrations WHERE email = ? AND registration_status = "pending"',
-        [email]
+      const pendingUsers = await pool.query(
+        'SELECT * FROM user_registrations WHERE email = $1 AND status = $2',
+        [email, 'pending']
       );
 
-      if (pendingUsers.length > 0) {
+      if (pendingUsers.rows.length > 0) {
         return res.status(403).json({
           success: false,
           message: 'Your account is pending admin approval. Please wait for approval before logging in.'
@@ -111,10 +111,10 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const user = users[0];
+    const user = users.rows[0];
 
     // Compare password
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(401).json({
@@ -186,19 +186,19 @@ router.post('/refresh', async (req, res) => {
     }
 
     // Verify user still exists and is active
-    const [users] = await pool.query(
-      'SELECT * FROM users WHERE user_id = ? AND is_approved = TRUE AND is_active = TRUE',
+    const users = await pool.query(
+      'SELECT * FROM users WHERE user_id = $1 AND is_approved = TRUE AND is_active = TRUE',
       [decoded.user_id]
     );
 
-    if (users.length === 0) {
+    if (users.rows.length === 0) {
       return res.status(401).json({
         success: false,
         message: 'User not found or inactive'
       });
     }
 
-    const user = users[0];
+    const user = users.rows[0];
 
     // Create new token
     const payload = {
