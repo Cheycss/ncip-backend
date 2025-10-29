@@ -37,15 +37,15 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 
     // Get extended profile info
-    const [profiles] = await pool.query(
+    const profiles = await pool.query(
       `SELECT display_name, nickname, position, avatar_url, bio 
-       FROM user_profiles WHERE user_id = ?`,
+       FROM user_profiles WHERE user_id = $1`,
       [userId]
     );
 
     const profile = {
-      ...users[0],
-      ...(profiles.length > 0 ? profiles[0] : {})
+      ...users.rows[0],
+      ...(profiles.rows.length > 0 ? profiles.rows[0] : {})
     };
 
     res.json({ success: true, profile });
