@@ -12,27 +12,27 @@ router.get('/', authMiddleware, async (req, res) => {
     // Create user_profiles table if it doesn't exist
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_profiles (
-        profile_id INT PRIMARY KEY AUTO_INCREMENT,
+        profile_id SERIAL PRIMARY KEY,
         user_id INT UNIQUE NOT NULL,
         display_name VARCHAR(150),
         nickname VARCHAR(100),
         position VARCHAR(100),
-        avatar_url LONGTEXT,
+        avatar_url TEXT,
         bio TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
       )
     `);
 
     // Get user basic info
-    const [users] = await pool.query(
+    const users = await pool.query(
       `SELECT user_id, username, first_name, last_name, email, phone_number, address, role, created_at 
-       FROM users WHERE user_id = ?`,
+       FROM users WHERE user_id = $1`,
       [userId]
     );
 
-    if (users.length === 0) {
+    if (users.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
@@ -76,10 +76,11 @@ router.put('/', authMiddleware, async (req, res) => {
     const userParams = [];
 
     if (first_name !== undefined) {
-      userUpdates.push('first_name = ?');
+      userUpdates.push('first_name = $1');
       userParams.push(first_name);
     }
     if (last_name !== undefined) {
+      userUpdates.push('last_name = $2');
       userUpdates.push('last_name = ?');
       userParams.push(last_name);
     }
