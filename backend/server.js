@@ -30,11 +30,18 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware - Allow network access (temporarily permissive for debugging)
 app.use(cors({
-  origin: true, // Allow all origins temporarily
+  origin: function (origin, callback) {
+    console.log('CORS Origin:', origin);
+    callback(null, true); // Allow all origins
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200
 }));
+
+// Add explicit OPTIONS handler for preflight requests
+app.options('*', cors());
 // Increase payload limit for file uploads (birth certificates, avatars, etc.)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
