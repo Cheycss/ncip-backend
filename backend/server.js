@@ -19,7 +19,7 @@ import pdfRoutes from './routes/pdf.js';
 import uploadsRoutes from './routes/uploads.js';
 import adminReviewRoutes from './routes/adminReview.js';
 import adminProfileRoutes from './routes/adminProfile.js';
-import certificatesRoutes from './routes/certificates.js';
+// import certificatesRoutes from './routes/certificates.js'; // Temporarily disabled
 import initializeScheduler from './jobs/scheduler.js';
 import { autoCancelOverdueApplications, sendDeadlineWarnings } from './jobs/autoCancelApplications.js';
 
@@ -66,7 +66,7 @@ app.use('/api/pdf', pdfRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/admin', adminReviewRoutes);
 app.use('/api/admin', adminProfileRoutes);
-app.use('/api/applications', certificatesRoutes);
+// app.use('/api/applications', certificatesRoutes); // Temporarily disabled
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
