@@ -28,22 +28,12 @@ dotenv.config({ path: './.env' });
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware - Allow network access
+// Middleware - Allow network access (temporarily permissive for debugging)
 app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'http://localhost:5173',
-    'https://ncip-frontend-3w3ofutw5-cheycss-projects.vercel.app', // Old Vercel URL
-    'https://ncip-frontend.vercel.app', // New Production Vercel URL
-    /^https:\/\/ncip-frontend.*\.vercel\.app$/, // Allow any Vercel deployment
-    /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:3000$/, // Allow any 192.168.x.x:3000
-    /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:5173$/, // Allow any 192.168.x.x:5173
-    /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:3000$/, // Allow any 10.x.x.x:3000
-    /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:5173$/, // Allow any 10.x.x.x:5173
-    /^http:\/\/172\.16\.\d{1,3}\.\d{1,3}:3000$/, // Allow any 172.16.x.x:3000
-    /^http:\/\/172\.16\.\d{1,3}\.\d{1,3}:5173$/ // Allow any 172.16.x.x:5173
-  ],
-  credentials: true
+  origin: true, // Allow all origins temporarily
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 // Increase payload limit for file uploads (birth certificates, avatars, etc.)
 app.use(express.json({ limit: '50mb' }));
