@@ -144,11 +144,10 @@ router.post('/approve/:id', async (req, res) => {
     // Create actual user account
     const userResult = await pool.query(
       `INSERT INTO users (
-        username, first_name, last_name, email, phone_number, 
+        first_name, last_name, email, phone_number, 
         address, password_hash, role, is_approved, is_active
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING user_id`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING user_id`,
       [
-        registration.email, // Use email as username
         registration.first_name,
         registration.last_name,
         registration.email,
