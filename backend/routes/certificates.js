@@ -17,7 +17,7 @@ router.post('/:id/generate-certificate', async (req, res) => {
     console.log(`🏆 Generating certificate for application: ${id}`);
 
     // Fetch application data from database
-    const [applications] = await pool.query(
+    const applications = await pool.query(
       `SELECT 
         a.application_id,
         a.application_number,
@@ -30,18 +30,18 @@ router.post('/:id/generate-certificate', async (req, res) => {
         u.email
        FROM applications a
        LEFT JOIN users u ON a.user_id = u.user_id
-       WHERE a.application_id = ?`,
+       WHERE a.application_id = $1`,
       [parseInt(id)]
     );
 
-    if (applications.length === 0) {
+    if (applications.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Application not found'
       });
     }
 
-    const application = applications[0];
+    const application = applications.rows[0];
 
     // Check if application is approved and ready for certificate
     if (application.status !== 'approved') {
@@ -97,7 +97,7 @@ router.post('/:id/generate-certificate', async (req, res) => {
       `UPDATE applications 
        SET status = 'certificate_issued', 
            updated_at = NOW()
-       WHERE application_id = ?`,
+       WHERE application_id = $1`,
       [parseInt(id)]
     );
 
