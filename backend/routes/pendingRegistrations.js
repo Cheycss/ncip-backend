@@ -151,8 +151,26 @@ router.post('/approve/:id', async (req, res) => {
     }
 
     // Create actual user account - handle NULL values
-    // Generate username from email (before @ symbol) or use full email
-    const username = registration.email.split('@')[0] + '_' + Date.now();
+    // Generate clean username from first and last name
+    const cleanFirstName = (registration.first_name || '').toLowerCase().replace(/\s+/g, '');
+    const cleanLastName = (registration.last_name || '').toLowerCase().replace(/\s+/g, '');
+    let username = cleanFirstName + cleanLastName;
+    
+    // If username is too short, use email prefix
+    if (username.length < 3) {
+      username = registration.email.split('@')[0];
+    }
+    
+    // Check if username exists, if so add a number
+    const existingUsername = await pool.query(
+      'SELECT user_id FROM users WHERE username = $1',
+      [username]
+    );
+    
+    if (existingUsername.rows.length > 0) {
+      // Add a small random number instead of timestamp
+      username = username + Math.floor(Math.random() * 1000);
+    }
     
     const userResult = await pool.query(
       `INSERT INTO users (
