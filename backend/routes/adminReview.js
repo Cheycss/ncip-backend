@@ -15,18 +15,21 @@ router.get('/applications', async (req, res) => {
     let whereClause = 'WHERE 1=1';
     const queryParams = [];
 
+    let paramIndex = 1;
     if (status && status !== 'all') {
-      whereClause += ' AND a.status = ?';
+      whereClause += ` AND a.status = $${paramIndex}`;
       queryParams.push(status);
+      paramIndex++;
     }
 
     if (search) {
-      whereClause += ' AND (a.application_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)';
+      whereClause += ` AND (a.application_id::text LIKE $${paramIndex} OR u.first_name LIKE $${paramIndex+1} OR u.last_name LIKE $${paramIndex+2})`;
       queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      paramIndex += 3;
     }
 
     // Get applications with user info and document counts
-    const [applications] = await pool.query(
+    const applications = await pool.query(
       `SELECT 
         a.application_id as id,
         a.user_id,
@@ -50,14 +53,14 @@ router.get('/applications', async (req, res) => {
        LEFT JOIN users u ON a.user_id = u.user_id
        LEFT JOIN uploaded_documents ud ON a.application_id = ud.application_id
        ${whereClause}
-       GROUP BY a.application_id
+       GROUP BY a.application_id, u.first_name, u.last_name, u.email
        ORDER BY a.created_at DESC
-       LIMIT ? OFFSET ?`,
+       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`,
       [...queryParams, parseInt(limit), parseInt(offset)]
     );
 
     // Get total count for pagination
-    const [countResult] = await pool.query(
+    const countResult = await pool.query(
       `SELECT COUNT(DISTINCT a.application_id) as total
        FROM applications a
        LEFT JOIN users u ON a.user_id = u.user_id
@@ -65,11 +68,11 @@ router.get('/applications', async (req, res) => {
       queryParams
     );
 
-    const totalApplications = countResult[0].total;
+    const totalApplications = countResult.rows[0].total;
     const totalPages = Math.ceil(totalApplications / limit);
 
     // Parse form_data JSON for each application
-    const processedApplications = applications.map(app => {
+    const processedApplications = applications.rows.map(app => {
       let formData = {};
       try {
         formData = JSON.parse(app.form_data || '{}');
@@ -118,7 +121,7 @@ router.get('/application/:id', async (req, res) => {
     console.log(`📄 Admin fetching application details: ${id}`);
 
     // Get application with user info (using correct schema)
-    const [applications] = await pool.query(
+    const applications = await pool.query(
       `SELECT 
         a.*,
         u.first_name,
@@ -128,18 +131,18 @@ router.get('/application/:id', async (req, res) => {
         u.address
        FROM applications a
        LEFT JOIN users u ON a.user_id = u.user_id
-       WHERE a.application_id = ?`,
+       WHERE a.application_id = $1`,
       [parseInt(id)]
     );
 
-    if (applications.length === 0) {
+    if (applications.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Application not found'
       });
     }
 
-    const application = applications[0];
+    const application = applications.rows[0];
 
     // Parse form_data
     let formData = {};
@@ -150,7 +153,7 @@ router.get('/application/:id', async (req, res) => {
     }
 
     // Get uploaded documents (application_id is varchar in uploaded_documents)
-    const [documents] = await pool.query(
+    const documents = await pool.query(
       `SELECT 
         id,
         document_type,
@@ -166,20 +169,20 @@ router.get('/application/:id', async (req, res) => {
         reviewed_at,
         review_notes
        FROM uploaded_documents 
-       WHERE application_id = ?
+       WHERE application_id = $1
        ORDER BY uploaded_at DESC`,
       [id.toString()]
     );
 
     // Get review history (application_id is varchar in review_history)
-    const [reviewHistory] = await pool.query(
+    const reviewHistory = await pool.query(
       `SELECT 
         rh.*,
         u.first_name as reviewer_first_name,
         u.last_name as reviewer_last_name
        FROM review_history rh
        LEFT JOIN users u ON rh.reviewed_by = u.user_id
-       WHERE rh.application_id = ?
+       WHERE rh.application_id = $1
        ORDER BY rh.reviewed_at DESC`,
       [id.toString()]
     );
@@ -191,8 +194,8 @@ router.get('/application/:id', async (req, res) => {
           ...application,
           form_data: formData
         },
-        documents,
-        reviewHistory
+        documents: documents.rows,
+        reviewHistory: reviewHistory.rows
       }
     });
 
@@ -228,29 +231,29 @@ router.post('/review-document', async (req, res) => {
     // Update document review status
     await pool.query(
       `UPDATE uploaded_documents 
-       SET review_status = ?, 
-           reviewed_by = ?, 
+       SET review_status = $1, 
+           reviewed_by = $2, 
            reviewed_at = NOW(), 
-           review_notes = ?
-       WHERE id = ?`,
+           review_notes = $3
+       WHERE id = $4`,
       [reviewStatus, reviewedBy, reviewNotes || null, documentId]
     );
 
     // Get document info for logging
-    const [documents] = await pool.query(
-      'SELECT application_id, document_type FROM uploaded_documents WHERE id = ?',
+    const documents = await pool.query(
+      'SELECT application_id, document_type FROM uploaded_documents WHERE id = $1',
       [documentId]
     );
 
-    if (documents.length > 0) {
-      const { application_id, document_type } = documents[0];
+    if (documents.rows.length > 0) {
+      const { application_id, document_type } = documents.rows[0];
       
       // Log review action in review_history table (if it exists)
       try {
         await pool.query(
           `INSERT INTO review_history 
            (application_id, document_id, action, status, notes, reviewed_by, reviewed_at)
-           VALUES (?, ?, 'document_review', ?, ?, ?, NOW())`,
+           VALUES ($1, $2, 'document_review', $3, $4, $5, NOW())`,
           [application_id, documentId, reviewStatus, reviewNotes, reviewedBy]
         );
       } catch (historyError) {
@@ -322,12 +325,12 @@ router.post('/review-application', async (req, res) => {
     // Update application status
     await pool.query(
       `UPDATE applications 
-       SET status = ?, 
-           reviewed_by = ?, 
+       SET status = $1, 
+           reviewed_by = $2, 
            reviewed_at = NOW(), 
-           review_notes = ?,
+           review_notes = $3,
            updated_at = NOW()
-       WHERE application_id = ?`,
+       WHERE application_id = $4`,
       [newStatus, reviewedBy, notes || null, parseInt(applicationId)]
     );
 
@@ -336,7 +339,7 @@ router.post('/review-application', async (req, res) => {
       await pool.query(
         `INSERT INTO review_history 
          (application_id, action, status, notes, reviewed_by, reviewed_at)
-         VALUES (?, 'application_review', ?, ?, ?, NOW())`,
+         VALUES ($1, 'application_review', $2, $3, $4, NOW())`,
         [applicationId, newStatus, notes, reviewedBy]
       );
     } catch (historyError) {
@@ -370,7 +373,7 @@ router.get('/stats', async (req, res) => {
     console.log('📊 Admin fetching dashboard statistics...');
 
     // Get application counts by status
-    const [statusCounts] = await pool.query(
+    const statusCounts = await pool.query(
       `SELECT 
         status,
         COUNT(application_id) as count
@@ -379,7 +382,7 @@ router.get('/stats', async (req, res) => {
     );
 
     // Get document review counts
-    const [documentCounts] = await pool.query(
+    const documentCounts = await pool.query(
       `SELECT 
         review_status,
         COUNT(*) as count
@@ -388,23 +391,23 @@ router.get('/stats', async (req, res) => {
     );
 
     // Get recent activity (last 7 days)
-    const [recentActivity] = await pool.query(
+    const recentActivity = await pool.query(
       `SELECT 
         DATE(created_at) as date,
         COUNT(application_id) as applications
        FROM applications 
-       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+       WHERE created_at >= NOW() - INTERVAL '7 days'
        GROUP BY DATE(created_at)
        ORDER BY date DESC`
     );
 
     // Get top purposes (simplified since purpose is stored as text)
-    const [topPurposes] = await pool.query(
+    const topPurposes = await pool.query(
       `SELECT 
         purpose as purpose_name,
         COUNT(application_id) as count
        FROM applications
-       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+       WHERE created_at >= NOW() - INTERVAL '30 days'
        GROUP BY purpose
        ORDER BY count DESC
        LIMIT 5`
@@ -413,16 +416,16 @@ router.get('/stats', async (req, res) => {
     res.json({
       success: true,
       data: {
-        statusCounts: statusCounts.reduce((acc, item) => {
+        statusCounts: statusCounts.rows.reduce((acc, item) => {
           acc[item.status] = item.count;
           return acc;
         }, {}),
-        documentCounts: documentCounts.reduce((acc, item) => {
+        documentCounts: documentCounts.rows.reduce((acc, item) => {
           acc[item.review_status] = item.count;
           return acc;
         }, {}),
-        recentActivity,
-        topPurposes
+        recentActivity: recentActivity.rows,
+        topPurposes: topPurposes.rows
       }
     });
 
@@ -440,17 +443,17 @@ router.get('/stats', async (req, res) => {
 async function updateApplicationReviewStatus(applicationId) {
   try {
     // Get all documents for this application
-    const [documents] = await pool.query(
-      'SELECT review_status FROM uploaded_documents WHERE application_id = ?',
+    const documents = await pool.query(
+      'SELECT review_status FROM uploaded_documents WHERE application_id = $1',
       [applicationId]
     );
 
-    if (documents.length === 0) return;
+    if (documents.rows.length === 0) return;
 
-    const totalDocs = documents.length;
-    const approvedDocs = documents.filter(doc => doc.review_status === 'approved').length;
-    const rejectedDocs = documents.filter(doc => doc.review_status === 'rejected').length;
-    const pendingDocs = documents.filter(doc => doc.review_status === 'pending').length;
+    const totalDocs = documents.rows.length;
+    const approvedDocs = documents.rows.filter(doc => doc.review_status === 'approved').length;
+    const rejectedDocs = documents.rows.filter(doc => doc.review_status === 'rejected').length;
+    const pendingDocs = documents.rows.filter(doc => doc.review_status === 'pending').length;
 
     let newStatus = 'under_review';
 
@@ -464,7 +467,7 @@ async function updateApplicationReviewStatus(applicationId) {
 
     // Update application status
     await pool.query(
-      'UPDATE applications SET status = ?, updated_at = NOW() WHERE id = ?',
+      'UPDATE applications SET status = $1, updated_at = NOW() WHERE application_id = $2',
       [newStatus, applicationId]
     );
 
