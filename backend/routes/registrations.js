@@ -43,33 +43,33 @@ router.get('/pending', authMiddleware, adminMiddleware, async (_req, res) => {
 
 // POST /api/registrations/:id/approve
 router.post('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   try {
     const registrationId = req.params.id;
     const adminId = req.user.user_id;
 
-    await connection.beginTransaction();
+    await client.query('BEGIN');
 
     // Fetch pending registration
-    const [registrations] = await connection.query(
-      `SELECT * FROM user_registrations WHERE registration_id = ? FOR UPDATE`,
+    const registrations = await client.query(
+      `SELECT * FROM user_registrations WHERE registration_id = $1 FOR UPDATE`,
       [registrationId]
     );
 
-    if (registrations.length === 0) {
-      await connection.rollback();
+    if (registrations.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Registration not found' });
     }
 
-    const registration = registrations[0];
+    const registration = registrations.rows[0];
 
-    const [existingUsers] = await connection.query(
-      `SELECT user_id FROM users WHERE email = ? LIMIT 1`,
+    const existingUsers = await client.query(
+      `SELECT user_id FROM users WHERE email = $1 LIMIT 1`,
       [registration.email]
     );
 
-    if (existingUsers.length > 0) {
-      await connection.rollback();
+    if (existingUsers.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
         message: 'A user with this email already exists'
@@ -77,15 +77,15 @@ router.post('/:id/approve', authMiddleware, adminMiddleware, async (req, res) =>
     }
 
     if (registration.registration_status !== 'pending') {
-      await connection.rollback();
+      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, message: 'Registration is not pending' });
     }
 
     const username = registration.email.split('@')[0];
 
-    const [userResult] = await connection.query(
+    const userResult = await client.query(
       `INSERT INTO users (username, first_name, last_name, email, password_hash, role, is_active, is_approved, phone_number, address)
-       VALUES (?, ?, ?, ?, ?, 'user', TRUE, TRUE, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, 'user', TRUE, TRUE, $6, $7) RETURNING user_id`,
       [
         username,
         registration.first_name,
@@ -97,25 +97,25 @@ router.post('/:id/approve', authMiddleware, adminMiddleware, async (req, res) =>
       ]
     );
 
-    await connection.query(
-      `UPDATE user_registrations SET registration_status = 'approved', processed_by = ?
-       WHERE registration_id = ?`,
+    await client.query(
+      `UPDATE user_registrations SET registration_status = 'approved', processed_by = $1, processed_at = NOW()
+       WHERE registration_id = $2`,
       [adminId, registrationId]
     );
 
-    await connection.commit();
+    await client.query('COMMIT');
 
     res.json({
       success: true,
       message: 'Registration approved successfully',
-      user_id: userResult.insertId
+      user_id: userResult.rows[0].user_id
     });
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     console.error('Error approving registration:', error);
     res.status(500).json({ success: false, message: 'Failed to approve registration' });
   } finally {
-    connection.release();
+    client.release();
   }
 });
 
