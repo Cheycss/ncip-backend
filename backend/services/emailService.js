@@ -1,7 +1,13 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import sgMail from '@sendgrid/mail';
 
 dotenv.config();
+
+// Configure SendGrid if API key is available
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 // Dynamic frontend URL helper
 const getFrontendUrl = () => {
@@ -35,13 +41,48 @@ const createTransporter = () => {
 
 // Send verification code email
 const sendVerificationCode = async (email, code, firstName = '') => {
+  // Use SendGrid if available, otherwise fall back to SMTP
+  if (process.env.SENDGRID_API_KEY) {
+    const msg = {
+      to: email,
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      subject: 'NCIP Portal - Login Verification Code',
+      html: getVerificationEmailHTML(code, firstName)
+    };
+    
+    try {
+      await sgMail.send(msg);
+      console.log('✅ Verification email sent via SendGrid');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ SendGrid error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  // Fallback to SMTP
   const transporter = createTransporter();
   
   const mailOptions = {
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: email,
     subject: 'NCIP Portal - Login Verification Code',
-    html: `
+    html: getVerificationEmailHTML(code, firstName)
+  };
+
+  try {
+    const result = await transporter.sendMail(mailOptions);
+    console.log('✅ Verification email sent via SMTP:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('❌ SMTP error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Email HTML template helper
+const getVerificationEmailHTML = (code, firstName = '') => {
+  return `
       <!DOCTYPE html>
       <html>
       <head>
@@ -87,17 +128,7 @@ const sendVerificationCode = async (email, code, firstName = '') => {
         </div>
       </body>
       </html>
-    `
-  };
-
-  try {
-    const result = await transporter.sendMail(mailOptions);
-    console.log('Verification email sent successfully:', result.messageId);
-    return { success: true, messageId: result.messageId };
-  } catch (error) {
-    console.error('Error sending verification email:', error);
-    return { success: false, error: error.message };
-  }
+    `;
 };
 
 // Test email connection
@@ -115,13 +146,48 @@ const testEmailConnection = async () => {
 
 // Send registration verification code email
 const sendRegistrationVerificationCode = async (email, code, firstName = '') => {
+  // Use SendGrid if available
+  if (process.env.SENDGRID_API_KEY) {
+    const msg = {
+      to: email,
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      subject: 'NCIP Portal - Complete Your Registration',
+      html: getRegistrationEmailHTML(code, firstName)
+    };
+    
+    try {
+      await sgMail.send(msg);
+      console.log('✅ Registration email sent via SendGrid');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ SendGrid registration error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  // Fallback to SMTP
   const transporter = createTransporter();
   
   const mailOptions = {
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: email,
     subject: 'NCIP Portal - Complete Your Registration',
-    html: `
+    html: getRegistrationEmailHTML(code, firstName)
+  };
+
+  try {
+    const result = await transporter.sendMail(mailOptions);
+    console.log('✅ Registration email sent via SMTP:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('❌ SMTP registration error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Registration email HTML template
+const getRegistrationEmailHTML = (code, firstName = '') => {
+  return `
       <!DOCTYPE html>
       <html>
       <head>
@@ -174,17 +240,7 @@ const sendRegistrationVerificationCode = async (email, code, firstName = '') => 
         </div>
       </body>
       </html>
-    `
-  };
-
-  try {
-    const result = await transporter.sendMail(mailOptions);
-    console.log('Registration verification email sent successfully:', result.messageId);
-    return { success: true, messageId: result.messageId };
-  } catch (error) {
-    console.error('Error sending registration verification email:', error);
-    return { success: false, error: error.message };
-  }
+    `;
 };
 
 // Send approval email
