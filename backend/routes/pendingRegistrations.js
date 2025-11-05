@@ -35,7 +35,7 @@ router.post('/submit', async (req, res) => {
 
     // Check if there's already a pending registration with this email
     const pendingUsers = await pool.query(
-      'SELECT id FROM pending_registrations WHERE email = $1 AND status = $2',
+      'SELECT registration_id FROM pending_registrations WHERE email = $1 AND registration_status = $2',
       [email, 'pending']
     );
 
@@ -52,20 +52,17 @@ router.post('/submit', async (req, res) => {
     // Store in pending_registrations table
     const result = await pool.query(
       `INSERT INTO pending_registrations (
-        first_name, last_name, display_name, email, phone_number, 
-        address, ethnicity, password_hash, birth_certificate_data, 
-        status, submitted_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING id`,
+        username, first_name, last_name, email, phone_number, 
+        address, password_hash, registration_status, submitted_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING registration_id`,
       [
+        email, // username
         first_name,
         last_name,
-        display_name,
         email,
         phone_number,
         address,
-        ethnicity,
         hashedPassword,
-        birth_certificate_data,
         'pending'
       ]
     );
@@ -73,7 +70,7 @@ router.post('/submit', async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Registration submitted successfully! Please wait for admin approval.',
-      registration_id: result.rows[0].id
+      registration_id: result.rows[0].registration_id
     });
 
   } catch (error) {
@@ -89,10 +86,10 @@ router.post('/submit', async (req, res) => {
 router.get('/pending', async (req, res) => {
   try {
     const pendingRegistrations = await pool.query(
-      `SELECT id, first_name, last_name, display_name, email, phone_number, 
-              address, ethnicity, birth_certificate_data, submitted_at
+      `SELECT registration_id, username, first_name, last_name, email, phone_number, 
+              address, registration_status, submitted_at
        FROM pending_registrations 
-       WHERE status = $1 
+       WHERE registration_status = $1 
        ORDER BY submitted_at DESC`,
       ['pending']
     );
@@ -118,7 +115,7 @@ router.post('/approve/:id', async (req, res) => {
 
     // Get pending registration
     const pendingRegistrations = await pool.query(
-      'SELECT * FROM pending_registrations WHERE id = $1 AND status = $2',
+      'SELECT * FROM pending_registrations WHERE registration_id = $1 AND registration_status = $2',
       [id, 'pending']
     );
 
@@ -166,7 +163,7 @@ router.post('/approve/:id', async (req, res) => {
 
     // Update pending registration status
     await pool.query(
-      'UPDATE pending_registrations SET status = $1, approved_at = NOW() WHERE id = $2',
+      'UPDATE pending_registrations SET registration_status = $1, processed_at = NOW() WHERE registration_id = $2',
       ['approved', id]
     );
 
@@ -226,7 +223,7 @@ router.post('/reject/:id', async (req, res) => {
 
     // Get pending registration
     const pendingRegistrations = await pool.query(
-      'SELECT * FROM pending_registrations WHERE id = $1 AND status = $2',
+      'SELECT * FROM pending_registrations WHERE registration_id = $1 AND registration_status = $2',
       [id, 'pending']
     );
 
@@ -241,8 +238,8 @@ router.post('/reject/:id', async (req, res) => {
 
     // Update pending registration status with rejection comment
     await pool.query(
-      'UPDATE pending_registrations SET status = $1, rejection_comment = $2, rejected_at = NOW() WHERE id = $3',
-      ['rejected', comment.trim(), id]
+      'UPDATE pending_registrations SET registration_status = $1, processed_at = NOW() WHERE registration_id = $2',
+      ['rejected', id]
     );
 
     // Send rejection email with admin comment
@@ -292,7 +289,7 @@ router.get('/status/:email', async (req, res) => {
 
     // Check pending registration
     const pendingRegistrations = await pool.query(
-      'SELECT status, rejection_comment, submitted_at, rejected_at FROM pending_registrations WHERE email = $1 ORDER BY submitted_at DESC LIMIT 1',
+      'SELECT registration_status, submitted_at, processed_at FROM pending_registrations WHERE email = $1 ORDER BY submitted_at DESC LIMIT 1',
       [email]
     );
 
@@ -308,13 +305,12 @@ router.get('/status/:email', async (req, res) => {
 
     res.json({
       success: true,
-      status: registration.status,
-      message: registration.status === 'pending' 
+      status: registration.registration_status,
+      message: registration.registration_status === 'pending' 
         ? 'Registration is pending admin approval'
-        : registration.status === 'rejected'
+        : registration.registration_status === 'rejected'
         ? 'Registration was rejected'
         : 'Registration status updated',
-      rejection_comment: registration.rejection_comment,
       submitted_at: registration.submitted_at,
       rejected_at: registration.rejected_at
     });
