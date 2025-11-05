@@ -77,6 +77,8 @@ router.post('/send-user-verification', async (req, res) => {
 
   } catch (error) {
     console.error('Send admin user verification error:', error);
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
       success: false, 
       message: 'Internal server error. Please try again.' 

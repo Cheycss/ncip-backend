@@ -51,7 +51,13 @@ router.get('/', authMiddleware, async (req, res) => {
     res.json({ success: true, profile });
   } catch (error) {
     console.error('Error fetching profile:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch profile' });
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch profile',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
