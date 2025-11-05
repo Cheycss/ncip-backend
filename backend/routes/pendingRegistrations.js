@@ -21,12 +21,12 @@ router.post('/submit', async (req, res) => {
     } = req.body;
 
     // Check if email already exists in users table (approved users)
-    const [existingUsers] = await pool.execute(
-      'SELECT user_id FROM users WHERE email = ?',
+    const existingUsers = await pool.query(
+      'SELECT user_id FROM users WHERE email = $1',
       [email]
     );
 
-    if (existingUsers.length > 0) {
+    if (existingUsers.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'An account with this email already exists'
@@ -34,12 +34,12 @@ router.post('/submit', async (req, res) => {
     }
 
     // Check if there's already a pending registration with this email
-    const [pendingUsers] = await pool.execute(
-      'SELECT id FROM pending_registrations WHERE email = ? AND status = "pending"',
-      [email]
+    const pendingUsers = await pool.query(
+      'SELECT id FROM pending_registrations WHERE email = $1 AND status = $2',
+      [email, 'pending']
     );
 
-    if (pendingUsers.length > 0) {
+    if (pendingUsers.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'A registration with this email is already pending approval'
@@ -50,12 +50,12 @@ router.post('/submit', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Store in pending_registrations table
-    const [result] = await pool.execute(
+    const result = await pool.query(
       `INSERT INTO pending_registrations (
         first_name, last_name, display_name, email, phone_number, 
         address, ethnicity, password_hash, birth_certificate_data, 
         status, submitted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING id`,
       [
         first_name,
         last_name,
@@ -65,14 +65,15 @@ router.post('/submit', async (req, res) => {
         address,
         ethnicity,
         hashedPassword,
-        birth_certificate_data
+        birth_certificate_data,
+        'pending'
       ]
     );
 
     res.status(200).json({
       success: true,
       message: 'Registration submitted successfully! Please wait for admin approval.',
-      registration_id: result.insertId
+      registration_id: result.rows[0].id
     });
 
   } catch (error) {
@@ -87,17 +88,18 @@ router.post('/submit', async (req, res) => {
 // Get all pending registrations (for admin)
 router.get('/pending', async (req, res) => {
   try {
-    const [pendingRegistrations] = await pool.execute(
+    const pendingRegistrations = await pool.query(
       `SELECT id, first_name, last_name, display_name, email, phone_number, 
               address, ethnicity, birth_certificate_data, submitted_at
        FROM pending_registrations 
-       WHERE status = 'pending' 
-       ORDER BY submitted_at DESC`
+       WHERE status = $1 
+       ORDER BY submitted_at DESC`,
+      ['pending']
     );
 
     res.json({
       success: true,
-      registrations: pendingRegistrations
+      registrations: pendingRegistrations.rows
     });
 
   } catch (error) {
@@ -115,27 +117,27 @@ router.post('/approve/:id', async (req, res) => {
     const { id } = req.params;
 
     // Get pending registration
-    const [pendingRegistrations] = await pool.execute(
-      'SELECT * FROM pending_registrations WHERE id = ? AND status = "pending"',
-      [id]
+    const pendingRegistrations = await pool.query(
+      'SELECT * FROM pending_registrations WHERE id = $1 AND status = $2',
+      [id, 'pending']
     );
 
-    if (pendingRegistrations.length === 0) {
+    if (pendingRegistrations.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Pending registration not found'
       });
     }
 
-    const registration = pendingRegistrations[0];
+    const registration = pendingRegistrations.rows[0];
 
     // Check if email already exists in users table (double-check)
-    const [existingUsers] = await pool.execute(
-      'SELECT user_id FROM users WHERE email = ?',
+    const existingUsers = await pool.query(
+      'SELECT user_id FROM users WHERE email = $1',
       [registration.email]
     );
 
-    if (existingUsers.length > 0) {
+    if (existingUsers.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'User with this email already exists'
@@ -143,11 +145,11 @@ router.post('/approve/:id', async (req, res) => {
     }
 
     // Create actual user account
-    const [userResult] = await pool.execute(
+    const userResult = await pool.query(
       `INSERT INTO users (
         username, first_name, last_name, email, phone_number, 
         address, password_hash, role, is_approved, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'user', 1, 1)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING user_id`,
       [
         registration.email, // Use email as username
         registration.first_name,
@@ -155,14 +157,17 @@ router.post('/approve/:id', async (req, res) => {
         registration.email,
         registration.phone_number,
         registration.address,
-        registration.password_hash
+        registration.password_hash,
+        'user',
+        true,
+        true
       ]
     );
 
     // Update pending registration status
-    await pool.execute(
-      'UPDATE pending_registrations SET status = "approved", approved_at = NOW() WHERE id = ?',
-      [id]
+    await pool.query(
+      'UPDATE pending_registrations SET status = $1, approved_at = NOW() WHERE id = $2',
+      ['approved', id]
     );
 
     // Send approval email
@@ -179,7 +184,7 @@ router.post('/approve/:id', async (req, res) => {
     res.json({
       success: true,
       message: 'Registration approved successfully',
-      user_id: userResult.insertId
+      user_id: userResult.rows[0].user_id
     });
 
   } catch (error) {
@@ -220,24 +225,24 @@ router.post('/reject/:id', async (req, res) => {
     }
 
     // Get pending registration
-    const [pendingRegistrations] = await pool.execute(
-      'SELECT * FROM pending_registrations WHERE id = ? AND status = "pending"',
-      [id]
+    const pendingRegistrations = await pool.query(
+      'SELECT * FROM pending_registrations WHERE id = $1 AND status = $2',
+      [id, 'pending']
     );
 
-    if (pendingRegistrations.length === 0) {
+    if (pendingRegistrations.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Pending registration not found'
       });
     }
 
-    const registration = pendingRegistrations[0];
+    const registration = pendingRegistrations.rows[0];
 
     // Update pending registration status with rejection comment
-    await pool.execute(
-      'UPDATE pending_registrations SET status = "rejected", rejection_comment = ?, rejected_at = NOW() WHERE id = ?',
-      [comment.trim(), id]
+    await pool.query(
+      'UPDATE pending_registrations SET status = $1, rejection_comment = $2, rejected_at = NOW() WHERE id = $3',
+      ['rejected', comment.trim(), id]
     );
 
     // Send rejection email with admin comment
@@ -272,12 +277,12 @@ router.get('/status/:email', async (req, res) => {
     const { email } = req.params;
 
     // Check if user exists (approved)
-    const [existingUsers] = await pool.execute(
-      'SELECT user_id FROM users WHERE email = ?',
+    const existingUsers = await pool.query(
+      'SELECT user_id FROM users WHERE email = $1',
       [email]
     );
 
-    if (existingUsers.length > 0) {
+    if (existingUsers.rows.length > 0) {
       return res.json({
         success: true,
         status: 'approved',
@@ -286,12 +291,12 @@ router.get('/status/:email', async (req, res) => {
     }
 
     // Check pending registration
-    const [pendingRegistrations] = await pool.execute(
-      'SELECT status, rejection_comment, submitted_at, rejected_at FROM pending_registrations WHERE email = ? ORDER BY submitted_at DESC LIMIT 1',
+    const pendingRegistrations = await pool.query(
+      'SELECT status, rejection_comment, submitted_at, rejected_at FROM pending_registrations WHERE email = $1 ORDER BY submitted_at DESC LIMIT 1',
       [email]
     );
 
-    if (pendingRegistrations.length === 0) {
+    if (pendingRegistrations.rows.length === 0) {
       return res.json({
         success: true,
         status: 'not_found',
@@ -299,7 +304,7 @@ router.get('/status/:email', async (req, res) => {
       });
     }
 
-    const registration = pendingRegistrations[0];
+    const registration = pendingRegistrations.rows[0];
 
     res.json({
       success: true,
