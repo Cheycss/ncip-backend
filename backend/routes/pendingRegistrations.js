@@ -86,8 +86,8 @@ router.post('/submit', async (req, res) => {
 router.get('/pending', async (req, res) => {
   try {
     const pendingRegistrations = await pool.query(
-      `SELECT registration_id, username, first_name, last_name, email, phone_number, 
-              address, registration_status, submitted_at
+      `SELECT registration_id, registration_id as id, username, first_name, last_name, email, phone_number, 
+              address, registration_status, submitted_at, birth_certificate_data
        FROM pending_registrations 
        WHERE registration_status = $1 
        ORDER BY submitted_at DESC`,
