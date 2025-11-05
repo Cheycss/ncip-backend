@@ -151,12 +151,16 @@ router.post('/approve/:id', async (req, res) => {
     }
 
     // Create actual user account - handle NULL values
+    // Generate username from email (before @ symbol) or use full email
+    const username = registration.email.split('@')[0] + '_' + Date.now();
+    
     const userResult = await pool.query(
       `INSERT INTO users (
-        first_name, last_name, email, phone_number, 
+        username, first_name, last_name, email, phone_number, 
         address, password_hash, role, is_approved, is_active
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING user_id`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING user_id`,
       [
+        username,
         registration.first_name || '',
         registration.last_name || '',
         registration.email,
