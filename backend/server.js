@@ -35,14 +35,15 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:5173',
-      'http://192.168.68.56:3000',
       process.env.FRONTEND_URL
     ];
     
-    // Allow Vercel deployments
-    if (!origin || allowedOrigins.includes(origin) || 
+    // Allow Vercel deployments, localhost, and local network IPs (192.168.x.x)
+    if (!origin || 
+        allowedOrigins.includes(origin) || 
         origin?.includes('vercel.app') || 
-        origin?.includes('localhost')) {
+        origin?.includes('localhost') ||
+        origin?.match(/^http:\/\/192\.168\.\d+\.\d+:\d+$/)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
