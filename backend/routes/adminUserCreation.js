@@ -19,12 +19,12 @@ router.post('/send-user-verification', async (req, res) => {
     }
 
     // Check if email already exists
-    const [existingUsers] = await pool.execute(
-      'SELECT id FROM users WHERE email = ?',
+    const existingUsers = await pool.query(
+      'SELECT user_id FROM users WHERE email = $1',
       [email]
     );
     
-    if (existingUsers.length > 0) {
+    if (existingUsers.rows.length > 0) {
       return res.status(409).json({ 
         success: false, 
         message: 'A user with this email already exists' 
@@ -35,16 +35,18 @@ router.post('/send-user-verification', async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-    // Delete any existing unused codes for this email and type
-    await pool.execute(
-      'DELETE FROM verification_codes WHERE email = ? AND type = ? AND used = FALSE',
-      [email, 'admin_create']
+    // Delete any existing unused codes (no user_id yet, store in temp way)
+    // Note: For admin creation, we can't use user_id since user doesn't exist yet
+    // We'll use a workaround: store with user_id = NULL and email in code field prefix
+    await pool.query(
+      'DELETE FROM verification_codes WHERE user_id IS NULL AND code_type = $1 AND is_used = FALSE',
+      ['admin_create:' + email]
     );
 
     // Insert new verification code
-    const [result] = await pool.execute(
-      'INSERT INTO verification_codes (email, code, type, expires_at) VALUES (?, ?, ?, ?)',
-      [email, code, 'admin_create', expiresAt]
+    const result = await pool.query(
+      'INSERT INTO verification_codes (user_id, code, code_type, expires_at) VALUES (NULL, $1, $2, $3) RETURNING code_id',
+      [code, 'admin_create:' + email, expiresAt]
     );
     
     // Send verification code via email
@@ -56,9 +58,9 @@ router.post('/send-user-verification', async (req, res) => {
 
     if (!emailResult.success) {
       // If email fails, delete the verification code
-      await pool.execute(
-        'DELETE FROM verification_codes WHERE id = ?',
-        [result.insertId]
+      await pool.query(
+        'DELETE FROM verification_codes WHERE code_id = $1',
+        [result.rows[0].code_id]
       );
       return res.status(500).json({ 
         success: false, 
@@ -124,18 +126,26 @@ router.post('/verify-and-create-user', async (req, res) => {
     }
 
     // Find valid verification code
-    const verificationRecord = await VerificationCode.findValidCode(email, code, 'admin_create');
+    const verificationRecords = await pool.query(
+      'SELECT * FROM verification_codes WHERE code = $1 AND code_type = $2 AND is_used = FALSE',
+      [code, 'admin_create:' + email]
+    );
     
-    if (!verificationRecord) {
+    if (verificationRecords.rows.length === 0) {
       return res.status(400).json({ 
         success: false, 
         message: 'Invalid or expired verification code' 
       });
     }
 
+    const verificationRecord = verificationRecords.rows[0];
+
     // Check if code is expired
-    if (verificationRecord.isExpired()) {
-      await verificationRecord.destroy();
+    if (new Date() > new Date(verificationRecord.expires_at)) {
+      await pool.query(
+        'DELETE FROM verification_codes WHERE code_id = $1',
+        [verificationRecord.code_id]
+      );
       return res.status(400).json({ 
         success: false, 
         message: 'Verification code has expired. Please request a new one.' 
@@ -143,8 +153,11 @@ router.post('/verify-and-create-user', async (req, res) => {
     }
 
     // Check if email already exists (double check)
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
+    const existingUser = await pool.query(
+      'SELECT user_id FROM users WHERE email = $1',
+      [email]
+    );
+    if (existingUser.rows.length > 0) {
       return res.status(409).json({ 
         success: false, 
         message: 'A user with this email already exists' 
@@ -158,11 +171,11 @@ router.post('/verify-and-create-user', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create new user (admin-created users are automatically approved)
-    const [userResult] = await pool.execute(
+    const userResult = await pool.query(
       `INSERT INTO users (
         username, first_name, last_name, email, phone_number, 
         address, password_hash, role, is_approved, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING user_id`,
       [
         email, // Use email as username
         firstName,
@@ -172,15 +185,15 @@ router.post('/verify-and-create-user', async (req, res) => {
         address || null,
         hashedPassword,
         role || 'user',
-        1, // Admin-created users are automatically approved
-        1  // Active by default
+        true, // Admin-created users are automatically approved
+        true  // Active by default
       ]
     );
 
     // Mark verification code as used
-    await pool.execute(
-      'UPDATE verification_codes SET used = TRUE WHERE id = ?',
-      [verificationRecord.id]
+    await pool.query(
+      'UPDATE verification_codes SET is_used = TRUE WHERE code_id = $1',
+      [verificationRecord.code_id]
     );
 
     // Return success response
@@ -188,7 +201,7 @@ router.post('/verify-and-create-user', async (req, res) => {
       success: true,
       message: 'User created successfully!',
       user: {
-        id: userResult.insertId,
+        id: userResult.rows[0].user_id,
         email: email,
         first_name: firstName,
         last_name: lastName,
@@ -222,8 +235,11 @@ router.post('/resend-user-verification', async (req, res) => {
     }
 
     // Check if email already exists
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
+    const existingUser = await pool.query(
+      'SELECT user_id FROM users WHERE email = $1',
+      [email]
+    );
+    if (existingUser.rows.length > 0) {
       return res.status(409).json({ 
         success: false, 
         message: 'A user with this email already exists' 
@@ -231,17 +247,33 @@ router.post('/resend-user-verification', async (req, res) => {
     }
 
     // Generate new verification code
-    const verificationRecord = await VerificationCode.createVerificationCode(email, 'admin_create');
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    
+    // Delete old codes
+    await pool.query(
+      'DELETE FROM verification_codes WHERE user_id IS NULL AND code_type = $1 AND is_used = FALSE',
+      ['admin_create:' + email]
+    );
+    
+    // Insert new code
+    const result = await pool.query(
+      'INSERT INTO verification_codes (user_id, code, code_type, expires_at) VALUES (NULL, $1, $2, $3) RETURNING code_id',
+      [code, 'admin_create:' + email, expiresAt]
+    );
     
     // Send new code
     const emailResult = await sendRegistrationVerificationCode(
       email, 
-      verificationRecord.code, 
+      code, 
       firstName
     );
 
     if (!emailResult.success) {
-      await verificationRecord.destroy();
+      await pool.query(
+        'DELETE FROM verification_codes WHERE code_id = $1',
+        [result.rows[0].code_id]
+      );
       return res.status(500).json({ 
         success: false, 
         message: 'Failed to send verification email. Please try again.' 
