@@ -128,6 +128,15 @@ router.post('/approve/:id', async (req, res) => {
 
     const registration = pendingRegistrations.rows[0];
 
+    console.log('Registration data:', {
+      first_name: registration.first_name,
+      last_name: registration.last_name,
+      email: registration.email,
+      phone_number: registration.phone_number,
+      address: registration.address,
+      has_password: !!registration.password_hash
+    });
+
     // Check if email already exists in users table (double-check)
     const existingUsers = await pool.query(
       'SELECT user_id FROM users WHERE email = $1',
@@ -141,18 +150,18 @@ router.post('/approve/:id', async (req, res) => {
       });
     }
 
-    // Create actual user account
+    // Create actual user account - handle NULL values
     const userResult = await pool.query(
       `INSERT INTO users (
         first_name, last_name, email, phone_number, 
         address, password_hash, role, is_approved, is_active
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING user_id`,
       [
-        registration.first_name,
-        registration.last_name,
+        registration.first_name || '',
+        registration.last_name || '',
         registration.email,
-        registration.phone_number,
-        registration.address,
+        registration.phone_number || null,
+        registration.address || null,
         registration.password_hash,
         'user',
         true,
