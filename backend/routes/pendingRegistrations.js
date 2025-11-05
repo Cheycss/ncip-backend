@@ -53,8 +53,8 @@ router.post('/submit', async (req, res) => {
     const result = await pool.query(
       `INSERT INTO pending_registrations (
         username, first_name, last_name, email, phone_number, 
-        address, password_hash, registration_status, submitted_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING registration_id`,
+        address, password_hash, registration_status, submitted_at, birth_certificate_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9) RETURNING registration_id`,
       [
         email, // username
         first_name,
@@ -63,7 +63,8 @@ router.post('/submit', async (req, res) => {
         phone_number,
         address,
         hashedPassword,
-        'pending'
+        'pending',
+        birth_certificate_data
       ]
     );
 
