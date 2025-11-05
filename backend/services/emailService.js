@@ -86,44 +86,124 @@ const getVerificationEmailHTML = (code, firstName = '') => {
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-          .container { max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; }
-          .header { background: linear-gradient(135deg, #3B82F6, #4F46E5); color: white; padding: 20px; text-align: center; }
-          .content { padding: 30px; background: #f8fafc; }
-          .code-box { background: white; border: 2px solid #3B82F6; border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0; }
-          .code { font-size: 32px; font-weight: bold; color: #3B82F6; letter-spacing: 8px; font-family: monospace; }
-          .footer { background: #1e293b; color: #94a3b8; padding: 20px; text-align: center; font-size: 12px; }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f6f8fa;
+          }
+          .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+          }
+          .logo {
+            text-align: center;
+            padding: 40px 20px 20px;
+          }
+          .logo-circle {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #1e40af, #3b82f6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+          }
+          .content {
+            padding: 20px 40px 40px;
+            color: #24292f;
+          }
+          .title {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0 0 20px;
+            text-align: center;
+            color: #24292f;
+          }
+          .message {
+            font-size: 16px;
+            line-height: 1.5;
+            color: #57606a;
+            margin-bottom: 24px;
+          }
+          .code-box {
+            background-color: #f6f8fa;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            padding: 24px;
+            margin: 24px 0;
+            text-align: center;
+          }
+          .code {
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: 8px;
+            color: #24292f;
+            font-family: 'Courier New', monospace;
+          }
+          .info-text {
+            font-size: 14px;
+            color: #57606a;
+            line-height: 1.5;
+            margin: 16px 0;
+          }
+          .warning {
+            font-size: 14px;
+            color: #57606a;
+            line-height: 1.5;
+            margin-top: 24px;
+          }
+          .footer {
+            padding: 24px 40px;
+            border-top: 1px solid #d0d7de;
+            background-color: #f6f8fa;
+            text-align: center;
+            font-size: 12px;
+            color: #57606a;
+            border-radius: 0 0 6px 6px;
+          }
+          .footer p {
+            margin: 4px 0;
+          }
         </style>
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>🏛️ NCIP Portal</h1>
-            <p>National Commission on Indigenous Peoples</p>
+          <div class="logo">
+            <div class="logo-circle">🏛️</div>
           </div>
           
           <div class="content">
-            <h2>Login Verification Code</h2>
-            <p>Hello ${firstName ? firstName : 'User'},</p>
-            <p>You requested to log in to your NCIP Portal account. Please use the verification code below:</p>
+            <h1 class="title">Please verify your identity${firstName ? ', ' + firstName : ''}</h1>
+            
+            <p class="message">Here is your NCIP Portal authentication code:</p>
             
             <div class="code-box">
               <div class="code">${code}</div>
             </div>
             
-            <p><strong>Important:</strong></p>
-            <ul>
-              <li>This code expires in <strong>10 minutes</strong></li>
-              <li>Do not share this code with anyone</li>
-              <li>If you didn't request this, please ignore this email</li>
-            </ul>
+            <p class="info-text">This code is valid for <strong>15 minutes</strong> and can only be used once.</p>
             
-            <p>Thank you for using NCIP Digital Services!</p>
+            <p class="info-text">Please don't share this code with anyone; we'll never ask for it on the phone or via email.</p>
+            
+            <p class="warning">
+              Thanks,<br>
+              The NCIP Portal Team
+            </p>
           </div>
           
           <div class="footer">
-            <p>© 2024 National Commission on Indigenous Peoples - Alabel, Sarangani Province</p>
-            <p>This is an automated message, please do not reply to this email.</p>
+            <p>You're receiving this email because a verification code was requested for your</p>
+            <p>NCIP Portal account. If this wasn't you, please ignore this email.</p>
+            <p style="margin-top: 12px;">© 2024 National Commission on Indigenous Peoples - Alabel, Sarangani Province</p>
           </div>
         </div>
       </body>
@@ -191,51 +271,124 @@ const getRegistrationEmailHTML = (code, firstName = '') => {
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-          .container { max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; }
-          .header { background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 20px; text-align: center; }
-          .content { padding: 30px; background: #f0fdf4; }
-          .code-box { background: white; border: 2px solid #10B981; border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0; }
-          .code { font-size: 32px; font-weight: bold; color: #10B981; letter-spacing: 8px; font-family: monospace; }
-          .footer { background: #1e293b; color: #94a3b8; padding: 20px; text-align: center; font-size: 12px; }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f6f8fa;
+          }
+          .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+          }
+          .logo {
+            text-align: center;
+            padding: 40px 20px 20px;
+          }
+          .logo-circle {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #059669, #10b981);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+          }
+          .content {
+            padding: 20px 40px 40px;
+            color: #24292f;
+          }
+          .title {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0 0 20px;
+            text-align: center;
+            color: #24292f;
+          }
+          .message {
+            font-size: 16px;
+            line-height: 1.5;
+            color: #57606a;
+            margin-bottom: 24px;
+          }
+          .code-box {
+            background-color: #f6f8fa;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            padding: 24px;
+            margin: 24px 0;
+            text-align: center;
+          }
+          .code {
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: 8px;
+            color: #24292f;
+            font-family: 'Courier New', monospace;
+          }
+          .info-text {
+            font-size: 14px;
+            color: #57606a;
+            line-height: 1.5;
+            margin: 16px 0;
+          }
+          .warning {
+            font-size: 14px;
+            color: #57606a;
+            line-height: 1.5;
+            margin-top: 24px;
+          }
+          .footer {
+            padding: 24px 40px;
+            border-top: 1px solid #d0d7de;
+            background-color: #f6f8fa;
+            text-align: center;
+            font-size: 12px;
+            color: #57606a;
+            border-radius: 0 0 6px 6px;
+          }
+          .footer p {
+            margin: 4px 0;
+          }
         </style>
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>🏛️ Welcome to NCIP Portal</h1>
-            <p>Complete Your Account Registration</p>
+          <div class="logo">
+            <div class="logo-circle">🏛️</div>
           </div>
           
           <div class="content">
-            <h2>Email Verification Required</h2>
-            <p>Hello ${firstName ? firstName : 'Future Member'},</p>
-            <p>Welcome to the NCIP Digital Portal! To complete your account registration, please verify your email address using the code below:</p>
+            <h1 class="title">Welcome to NCIP Portal${firstName ? ', ' + firstName : ''}</h1>
+            
+            <p class="message">Here is your registration verification code:</p>
             
             <div class="code-box">
               <div class="code">${code}</div>
             </div>
             
-            <p><strong>Next Steps:</strong></p>
-            <ul>
-              <li>Enter this code in the registration form</li>
-              <li>Complete your profile setup</li>
-              <li>Start applying for your Certificate of Confirmation</li>
-            </ul>
+            <p class="info-text">This code is valid for <strong>15 minutes</strong> and can only be used once.</p>
             
-            <p><strong>Important:</strong></p>
-            <ul>
-              <li>This code expires in <strong>15 minutes</strong></li>
-              <li>Keep this code secure and don't share it</li>
-              <li>If you didn't create this account, please ignore this email</li>
-            </ul>
+            <p class="info-text">Please don't share this code with anyone; we'll never ask for it on the phone or via email.</p>
             
-            <p>Thank you for joining the NCIP Digital Services community!</p>
+            <p class="warning">
+              Thanks,<br>
+              The NCIP Portal Team
+            </p>
           </div>
           
           <div class="footer">
-            <p>© 2024 National Commission on Indigenous Peoples - Alabel, Sarangani Province</p>
-            <p>This is an automated message, please do not reply to this email.</p>
+            <p>You're receiving this email because a registration was initiated for your</p>
+            <p>NCIP Portal account. If this wasn't you, please ignore this email.</p>
+            <p style="margin-top: 12px;">© 2024 National Commission on Indigenous Peoples - Alabel, Sarangani Province</p>
           </div>
         </div>
       </body>
