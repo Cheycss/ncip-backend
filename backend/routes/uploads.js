@@ -1,39 +1,37 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import pool from '../database.js';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: './backend/.env' });
 
 const router = express.Router();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'your_cloud_name',
+  api_key: process.env.CLOUDINARY_API_KEY || 'your_api_key',
+  api_secret: process.env.CLOUDINARY_API_SECRET || 'your_api_secret'
+});
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+// Configure Cloudinary storage for multer
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
     const { applicationId, documentType } = req.body;
-    const uploadPath = path.join(uploadsDir, applicationId || 'temp');
-    
-    // Create application-specific directory
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const { documentType } = req.body;
     const timestamp = Date.now();
-    const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const filename = `${documentType || 'document'}_${timestamp}_${originalName}`;
-    cb(null, filename);
+    const folder = `ncip-documents/${applicationId || 'temp'}`;
+    const publicId = `${documentType || 'document'}_${timestamp}_${file.originalname.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    
+    return {
+      folder: folder,
+      public_id: publicId,
+      resource_type: 'auto', // Automatically detect file type
+      allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+      transformation: file.mimetype.startsWith('image/') ? [{ quality: 'auto:good' }] : undefined
+    };
   }
 });
 
@@ -90,19 +88,21 @@ router.post('/document', upload.single('file'), async (req, res) => {
       });
     }
 
-    // File information
+    // Cloudinary file information
     const fileInfo = {
       originalName: req.file.originalname,
-      filename: req.file.filename,
-      path: req.file.path,
+      filename: req.file.filename || req.file.public_id,
+      path: req.file.path, // This is now the Cloudinary URL
+      secure_url: req.file.path, // Cloudinary secure URL
+      public_id: req.file.public_id,
       size: req.file.size,
       mimetype: req.file.mimetype,
       uploadedAt: new Date()
     };
 
-    console.log('📁 File uploaded:', fileInfo);
+    console.log('☁️ File uploaded to Cloudinary:', fileInfo);
 
-    // Store file information in database
+    // Store Cloudinary URL in database
     const result = await pool.query(
       `INSERT INTO uploaded_documents 
        (application_id, user_id, document_type, requirement_id, original_name, 
@@ -132,6 +132,7 @@ router.post('/document', upload.single('file'), async (req, res) => {
       data: {
         documentId,
         filename: fileInfo.filename,
+        url: fileInfo.secure_url, // Return Cloudinary URL for frontend
         originalName: fileInfo.originalName,
         size: fileInfo.size,
         uploadedAt: fileInfo.uploadedAt,
