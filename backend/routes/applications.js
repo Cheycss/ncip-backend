@@ -21,7 +21,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const userId = req.user.user_id;
 
     // Query applications for the user
-    const [applications] = await pool.query(
+    const applications = await pool.query(
       `SELECT 
         a.*,
         c.applicant_name,
@@ -33,14 +33,14 @@ router.get('/', authMiddleware, async (req, res) => {
         c.tribe_affiliation
       FROM applications a
       LEFT JOIN coc_forms c ON a.application_id = c.application_id
-      WHERE a.user_id = ?
+      WHERE a.user_id = $1
       ORDER BY a.created_at DESC`,
       [userId]
     );
 
     res.json({
       success: true,
-      applications
+      applications: applications.rows
     });
 
   } catch (error) {
@@ -56,7 +56,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // GET /api/applications/admin/all - Get all applications for admin dashboard
 router.get('/admin/all', authMiddleware, adminMiddleware, async (_req, res) => {
   try {
-    const [rows] = await pool.query(
+    const rows = await pool.query(
       `SELECT 
          a.application_id,
          a.user_id,
@@ -83,7 +83,7 @@ router.get('/admin/all', authMiddleware, adminMiddleware, async (_req, res) => {
        ORDER BY a.created_at DESC`
     );
 
-    const applications = rows.map(row => ({
+    const applications = rows.rows.map(row => ({
       application_id: row.application_id,
       user_id: row.user_id,
       application_number: row.application_number,
@@ -139,17 +139,17 @@ router.get('/:id', authMiddleware, async (req, res) => {
     const applicationId = req.params.id;
 
     // Query specific application
-    const [applications] = await pool.query(
+    const applications = await pool.query(
       `SELECT 
         a.*,
         c.*
       FROM applications a
       LEFT JOIN coc_forms c ON a.application_id = c.application_id
-      WHERE a.application_id = ? AND a.user_id = ?`,
+      WHERE a.application_id = $1 AND a.user_id = $2`,
       [applicationId, userId]
     );
 
-    if (applications.length === 0) {
+    if (applications.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Application not found'
@@ -158,7 +158,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     res.json({
       success: true,
-      application: applications[0]
+      application: applications.rows[0]
     });
 
   } catch (error) {
@@ -255,24 +255,24 @@ router.put('/:id/status', authMiddleware, adminMiddleware, async (req, res) => {
     }
 
     // Get application details before updating
-    const [applications] = await pool.query(
-      'SELECT user_id, application_number FROM applications WHERE application_id = ?',
+    const applications = await pool.query(
+      'SELECT user_id, application_number FROM applications WHERE application_id = $1',
       [id]
     );
 
-    if (applications.length === 0) {
+    if (applications.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
 
-    const application = applications[0];
+    const application = applications.rows[0];
 
-    const [result] = await pool.query(
-      `UPDATE applications SET status = ?, reviewer_notes = ?, updated_at = NOW()
-       WHERE application_id = ?`,
+    const result = await pool.query(
+      `UPDATE applications SET status = $1, reviewer_notes = $2, updated_at = NOW()
+       WHERE application_id = $3`,
       [status, reviewer_notes || null, id]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
 

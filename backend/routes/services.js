@@ -22,14 +22,14 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (is_active !== undefined) {
-      query += ' WHERE is_active = ?';
+      query += ' WHERE is_active = $1';
       params.push(is_active === 'true' || is_active === true);
     }
 
     query += ' ORDER BY created_at DESC';
-    const [services] = await pool.query(query, params);
+    const services = await pool.query(query, params);
 
-    res.json({ success: true, services });
+    res.json({ success: true, services: services.rows });
   } catch (error) {
     console.error('Error fetching services:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch services' });
@@ -47,18 +47,18 @@ router.post('/', async (req, res) => {
 
     const requirementsJson = requirements ? JSON.stringify(requirements) : null;
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO services (service_code, service_name, description, requirements, processing_time, is_active)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING service_id`,
       [service_code, service_name, description, requirementsJson, processing_time, is_active]
     );
 
-    const [newServiceRows] = await pool.query(
-      'SELECT * FROM services WHERE service_id = ?',
-      [result.insertId]
+    const newServiceRows = await pool.query(
+      'SELECT * FROM services WHERE service_id = $1',
+      [result.rows[0].service_id]
     );
 
-    res.status(201).json({ success: true, service: newServiceRows[0] });
+    res.status(201).json({ success: true, service: newServiceRows.rows[0] });
   } catch (error) {
     console.error('Error creating service:', error);
     res.status(500).json({ success: false, message: 'Failed to create service' });
@@ -71,31 +71,26 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     const { code, name, description, status } = req.body;
 
-    const [existingRows] = await pool.query(
-      'SELECT * FROM service_catalog WHERE service_id = ?',
+    const existingRows = await pool.query(
+      'SELECT * FROM services WHERE service_id = $1',
       [id]
     );
 
-    if (existingRows.length === 0) {
+    if (existingRows.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Service not found' });
     }
 
     await pool.query(
-      `UPDATE service_catalog
-       SET code = COALESCE(?, code),
-           name = COALESCE(?, name),
-           description = COALESCE(?, description),
-           status = COALESCE(?, status)
-       WHERE service_id = ?`,
+      'UPDATE services SET service_code = $1, service_name = $2, description = $3, is_active = $4 WHERE service_id = $5',
       [code, name, description, status, id]
     );
 
-    const [updatedRows] = await pool.query(
-      'SELECT * FROM service_catalog WHERE service_id = ?',
+    const updatedRows = await pool.query(
+      'SELECT * FROM services WHERE service_id = $1',
       [id]
     );
 
-    res.json({ success: true, service: updatedRows[0] });
+    res.json({ success: true, service: updatedRows.rows[0] });
   } catch (error) {
     console.error('Error updating service:', error);
     res.status(500).json({ success: false, message: 'Failed to update service' });
@@ -107,16 +102,16 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [existingRows] = await pool.query(
-      'SELECT * FROM service_catalog WHERE service_id = ?',
+    const existingRows = await pool.query(
+      'SELECT * FROM services WHERE service_id = $1',
       [id]
     );
 
-    if (existingRows.length === 0) {
+    if (existingRows.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Service not found' });
     }
 
-    await pool.query('DELETE FROM service_catalog WHERE service_id = ?', [id]);
+    await pool.query('DELETE FROM services WHERE service_id = $1', [id]);
 
     res.json({ success: true, message: 'Service deleted successfully' });
   } catch (error) {
@@ -130,12 +125,12 @@ router.get('/:id/purposes', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [purposes] = await pool.query(
-      'SELECT * FROM service_purposes WHERE service_id = ? ORDER BY created_at DESC',
+    const purposes = await pool.query(
+      'SELECT * FROM service_purposes WHERE service_id = $1 ORDER BY created_at DESC',
       [id]
     );
 
-    res.json({ success: true, purposes });
+    res.json({ success: true, purposes: purposes.rows });
   } catch (error) {
     console.error('Error fetching service purposes:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch service purposes' });
@@ -151,27 +146,27 @@ router.post('/:id/purposes', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Title is required' });
     }
 
-    const [serviceRows] = await pool.query(
-      'SELECT service_id FROM service_catalog WHERE service_id = ?',
+    const serviceRows = await pool.query(
+      'SELECT service_id FROM services WHERE service_id = $1',
       [id]
     );
 
-    if (serviceRows.length === 0) {
+    if (serviceRows.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Service not found' });
     }
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO service_purposes (service_id, title, description, is_default)
-       VALUES (?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4) RETURNING purpose_id`,
       [id, title, description, is_default]
     );
 
-    const [newPurposeRows] = await pool.query(
-      'SELECT * FROM service_purposes WHERE purpose_id = ?',
-      [result.insertId]
+    const newPurposeRows = await pool.query(
+      'SELECT * FROM service_purposes WHERE purpose_id = $1',
+      [result.rows[0].purpose_id]
     );
 
-    res.status(201).json({ success: true, purpose: newPurposeRows[0] });
+    res.status(201).json({ success: true, purpose: newPurposeRows.rows[0] });
   } catch (error) {
     console.error('Error creating service purpose:', error);
     res.status(500).json({ success: false, message: 'Failed to create service purpose' });
@@ -183,30 +178,26 @@ router.put('/purposes/:purposeId', async (req, res) => {
     const { purposeId } = req.params;
     const { title, description, is_default } = req.body;
 
-    const [existingRows] = await pool.query(
-      'SELECT * FROM service_purposes WHERE purpose_id = ?',
+    const existingRows = await pool.query(
+      'SELECT * FROM service_purposes WHERE purpose_id = $1',
       [purposeId]
     );
 
-    if (existingRows.length === 0) {
+    if (existingRows.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Purpose not found' });
     }
 
     await pool.query(
-      `UPDATE service_purposes
-       SET title = COALESCE(?, title),
-           description = COALESCE(?, description),
-           is_default = COALESCE(?, is_default)
-       WHERE purpose_id = ?`,
+      'UPDATE service_purposes SET title = $1, description = $2, is_default = $3 WHERE purpose_id = $4',
       [title, description, is_default, purposeId]
     );
 
-    const [updatedRows] = await pool.query(
-      'SELECT * FROM service_purposes WHERE purpose_id = ?',
+    const updatedRows = await pool.query(
+      'SELECT * FROM service_purposes WHERE purpose_id = $1',
       [purposeId]
     );
 
-    res.json({ success: true, purpose: updatedRows[0] });
+    res.json({ success: true, purpose: updatedRows.rows[0] });
   } catch (error) {
     console.error('Error updating service purpose:', error);
     res.status(500).json({ success: false, message: 'Failed to update service purpose' });
@@ -217,16 +208,16 @@ router.delete('/purposes/:purposeId', async (req, res) => {
   try {
     const { purposeId } = req.params;
 
-    const [existingRows] = await pool.query(
-      'SELECT * FROM service_purposes WHERE purpose_id = ?',
+    const existingRows = await pool.query(
+      'SELECT * FROM service_purposes WHERE purpose_id = $1',
       [purposeId]
     );
 
-    if (existingRows.length === 0) {
+    if (existingRows.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Purpose not found' });
     }
 
-    await pool.query('DELETE FROM service_purposes WHERE purpose_id = ?', [purposeId]);
+    await pool.query('DELETE FROM service_purposes WHERE purpose_id = $1', [purposeId]);
 
     res.json({ success: true, message: 'Purpose deleted successfully' });
   } catch (error) {

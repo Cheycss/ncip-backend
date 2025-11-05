@@ -17,10 +17,10 @@ const adminMiddleware = (req, res, next) => {
 // GET /api/registrations - Get all registrations
 router.get('/', authMiddleware, adminMiddleware, async (_req, res) => {
   try {
-    const [rows] = await pool.query(
+    const rows = await pool.query(
       `SELECT * FROM user_registrations ORDER BY submitted_at DESC`
     );
-    res.json({ success: true, registrations: rows });
+    res.json({ success: true, registrations: rows.rows });
   } catch (error) {
     console.error('Error fetching registrations:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch registrations' });
@@ -30,11 +30,11 @@ router.get('/', authMiddleware, adminMiddleware, async (_req, res) => {
 // GET /api/registrations/pending
 router.get('/pending', authMiddleware, adminMiddleware, async (_req, res) => {
   try {
-    const [rows] = await pool.query(
+    const rows = await pool.query(
       `SELECT * FROM user_registrations WHERE registration_status = 'pending' ORDER BY submitted_at ASC`
     );
 
-    res.json({ success: true, registrations: rows });
+    res.json({ success: true, registrations: rows.rows });
   } catch (error) {
     console.error('Error fetching pending registrations:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch pending registrations' });
@@ -124,13 +124,13 @@ router.post('/:id/reject', authMiddleware, adminMiddleware, async (req, res) => 
   try {
     const registrationId = req.params.id;
     const adminId = req.user.user_id;
-    const [result] = await pool.query(
-      `UPDATE user_registrations SET registration_status = 'rejected', processed_by = ?
-       WHERE registration_id = ? AND registration_status = 'pending'`,
+    const result = await pool.query(
+      `UPDATE user_registrations SET registration_status = 'rejected', processed_by = $1
+       WHERE registration_id = $2 AND registration_status = 'pending'`,
       [adminId, registrationId]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Pending registration not found' });
     }
 

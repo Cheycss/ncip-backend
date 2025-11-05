@@ -2,7 +2,7 @@ import pkg from 'pg';
 import dotenv from 'dotenv';
 
 const { Pool } = pkg;
-dotenv.config({ path: './.env' });
+dotenv.config({ path: './backend/.env' });
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -17,6 +17,8 @@ pool.connect()
   })
   .catch(err => {
     console.error('❌ Database connection failed:', err.message);
+    console.error('🔍 DATABASE_URL:', process.env.DATABASE_URL ? 'Found' : 'Missing');
+    console.error('🔍 Full error:', err);
   });
 
 export default pool;

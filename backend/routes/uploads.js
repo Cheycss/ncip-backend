@@ -103,11 +103,11 @@ router.post('/document', upload.single('file'), async (req, res) => {
     console.log('📁 File uploaded:', fileInfo);
 
     // Store file information in database
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO uploaded_documents 
        (application_id, user_id, document_type, requirement_id, original_name, 
         filename, file_path, file_size, mime_type, upload_status, uploaded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploaded', NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'uploaded', NOW()) RETURNING id`,
       [
         applicationId,
         userId || null,
@@ -121,7 +121,7 @@ router.post('/document', upload.single('file'), async (req, res) => {
       ]
     );
 
-    const documentId = result.insertId;
+    const documentId = result.rows[0].id;
 
     // Update application status if all required documents are uploaded
     await updateApplicationStatus(applicationId);
@@ -163,24 +163,24 @@ router.get('/application/:id', async (req, res) => {
     
     console.log(`📋 Fetching documents for application: ${id}`);
 
-    const [documents] = await pool.query(
+    const documents = await pool.query(
       `SELECT 
         id, document_type, requirement_id, original_name, filename,
         file_size, mime_type, upload_status, uploaded_at, reviewed_at,
         review_status, review_notes
        FROM uploaded_documents 
-       WHERE application_id = ?
+       WHERE application_id = $1
        ORDER BY uploaded_at DESC`,
       [id]
     );
 
     // Get application info
-    const [appInfo] = await pool.query(
-      'SELECT application_id as id, status, purpose FROM applications WHERE application_id = ?',
+    const appInfo = await pool.query(
+      'SELECT application_id as id, status, purpose FROM applications WHERE application_id = $1',
       [id]
     );
 
-    if (appInfo.length === 0) {
+    if (appInfo.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Application not found'
@@ -190,11 +190,11 @@ router.get('/application/:id', async (req, res) => {
     res.json({
       success: true,
       data: {
-        application: appInfo[0],
-        documents: documents,
-        totalDocuments: documents.length,
-        uploadedCount: documents.filter(doc => doc.upload_status === 'uploaded').length,
-        reviewedCount: documents.filter(doc => doc.review_status === 'approved').length
+        application: appInfo.rows[0],
+        documents: documents.rows,
+        totalDocuments: documents.rows.length,
+        uploadedCount: documents.rows.filter(doc => doc.upload_status === 'uploaded').length,
+        reviewedCount: documents.rows.filter(doc => doc.review_status === 'approved').length
       }
     });
 
@@ -215,19 +215,19 @@ router.get('/document/:id', async (req, res) => {
     
     console.log(`📥 Download request for document: ${id}`);
 
-    const [documents] = await pool.query(
-      'SELECT * FROM uploaded_documents WHERE id = ?',
+    const documents = await pool.query(
+      'SELECT * FROM uploaded_documents WHERE id = $1',
       [id]
     );
 
-    if (documents.length === 0) {
+    if (documents.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Document not found'
       });
     }
 
-    const document = documents[0];
+    const document = documents.rows[0];
     const filePath = document.file_path;
 
     // Check if file exists
@@ -263,19 +263,19 @@ router.delete('/document/:id', async (req, res) => {
     console.log(`🗑️ Delete request for document: ${id}`);
 
     // Get document info first
-    const [documents] = await pool.query(
-      'SELECT * FROM uploaded_documents WHERE id = ?',
+    const documents = await pool.query(
+      'SELECT * FROM uploaded_documents WHERE id = $1',
       [id]
     );
 
-    if (documents.length === 0) {
+    if (documents.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Document not found'
       });
     }
 
-    const document = documents[0];
+    const document = documents.rows[0];
 
     // Delete file from filesystem
     if (fs.existsSync(document.file_path)) {
@@ -283,7 +283,7 @@ router.delete('/document/:id', async (req, res) => {
     }
 
     // Delete from database
-    await pool.query('DELETE FROM uploaded_documents WHERE id = ?', [id]);
+    await pool.query('DELETE FROM uploaded_documents WHERE id = $1', [id]);
 
     // Update application status
     await updateApplicationStatus(document.application_id);
@@ -307,51 +307,52 @@ router.delete('/document/:id', async (req, res) => {
 async function updateApplicationStatus(applicationId) {
   try {
     // Get application info
-    const [appInfo] = await pool.query(
-      'SELECT purpose_id FROM applications WHERE id = ?',
+    const appInfo = await pool.query(
+      'SELECT purpose_id FROM applications WHERE id = $1',
       [applicationId]
     );
 
-    if (appInfo.length === 0) return;
+    if (appInfo.rows.length === 0) return;
 
     // Get required documents count for this purpose
-    const [purposeInfo] = await pool.query(
-      'SELECT requirements FROM purposes WHERE purpose_id = ?',
-      [appInfo[0].purpose_id]
+    const purposeInfo = await pool.query(
+      'SELECT requirements FROM purposes WHERE purpose_id = $1',
+      [appInfo.rows[0].purpose_id]
     );
 
-    if (purposeInfo.length === 0) return;
+    if (purposeInfo.rows.length === 0) return;
 
-    let requiredCount = 5; // Default: 5 COC pages
+    let requiredCount = 0;
     try {
-      const requirements = JSON.parse(purposeInfo[0].requirements || '[]');
-      requiredCount += requirements.length; // Add purpose-specific requirements
-    } catch (e) {
-      console.warn('Error parsing requirements JSON:', e);
+      const requirements = JSON.parse(purposeInfo.rows[0].requirements || '[]');
+      requiredCount = requirements.length;
+    } catch (error) {
+      console.error('Error parsing requirements:', error);
+      return;
     }
 
     // Get uploaded documents count
-    const [uploadedCount] = await pool.query(
-      'SELECT COUNT(*) as count FROM uploaded_documents WHERE application_id = ? AND upload_status = "uploaded"',
+    const uploadedCount = await pool.query(
+      'SELECT COUNT(*) as count FROM uploaded_documents WHERE application_id = $1 AND upload_status = \'uploaded\'',
       [applicationId]
     );
 
-    const uploaded = uploadedCount[0].count;
+    const currentCount = parseInt(uploadedCount.rows[0].count);
 
     // Update application status
     let newStatus = 'draft';
-    if (uploaded >= requiredCount) {
+    if (currentCount >= requiredCount) {
       newStatus = 'documents_complete';
-    } else if (uploaded > 0) {
+    } else if (currentCount > 0) {
       newStatus = 'documents_partial';
     }
 
     await pool.query(
-      'UPDATE applications SET status = ?, updated_at = NOW() WHERE id = ?',
+      'UPDATE applications SET status = $1, updated_at = NOW() WHERE id = $2',
       [newStatus, applicationId]
     );
 
-    console.log(`📊 Application ${applicationId} status updated to: ${newStatus} (${uploaded}/${requiredCount} documents)`);
+    console.log(`📊 Application ${applicationId} status updated to: ${newStatus} (${currentCount}/${requiredCount} documents)`);
 
   } catch (error) {
     console.error('Error updating application status:', error);

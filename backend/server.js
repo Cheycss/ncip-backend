@@ -23,7 +23,7 @@ import adminProfileRoutes from './routes/adminProfile.js';
 import initializeScheduler from './jobs/scheduler.js';
 import { autoCancelOverdueApplications, sendDeadlineWarnings } from './jobs/autoCancelApplications.js';
 
-dotenv.config({ path: './.env' });
+dotenv.config({ path: './backend/.env' });
 
 const app = express();
 const PORT = process.env.PORT || 3001;

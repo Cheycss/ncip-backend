@@ -9,14 +9,14 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.user_id;
 
-    const [notifications] = await pool.query(
+    const notifications = await pool.query(
       `SELECT * FROM notifications 
-       WHERE user_id = ? 
+       WHERE user_id = $1 
        ORDER BY created_at DESC`,
       [userId]
     );
 
-    res.json({ success: true, notifications });
+    res.json({ success: true, notifications: notifications.rows });
   } catch (error) {
     console.error('Error fetching notifications:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch notifications' });
@@ -28,13 +28,13 @@ router.get('/unread-count', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.user_id;
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `SELECT COUNT(*) as count FROM notifications 
-       WHERE user_id = ? AND is_read = FALSE`,
+       WHERE user_id = $1 AND is_read = FALSE`,
       [userId]
     );
 
-    res.json({ success: true, count: result[0].count });
+    res.json({ success: true, count: result.rows[0].count });
   } catch (error) {
     console.error('Error fetching unread count:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch unread count' });
@@ -47,13 +47,13 @@ router.put('/:id/read', authMiddleware, async (req, res) => {
     const userId = req.user.user_id;
     const notificationId = req.params.id;
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `UPDATE notifications SET is_read = TRUE 
-       WHERE notification_id = ? AND user_id = ?`,
+       WHERE notification_id = $1 AND user_id = $2`,
       [notificationId, userId]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Notification not found' });
     }
 
@@ -70,7 +70,7 @@ router.put('/mark-all-read', authMiddleware, async (req, res) => {
     const userId = req.user.user_id;
 
     await pool.query(
-      `UPDATE notifications SET is_read = TRUE WHERE user_id = ?`,
+      `UPDATE notifications SET is_read = TRUE WHERE user_id = $1`,
       [userId]
     );
 
@@ -86,15 +86,15 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { user_id, title, message, type, related_application_id } = req.body;
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO notifications (user_id, title, message, type, related_application_id) 
-       VALUES (?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5) RETURNING notification_id`,
       [user_id, title, message, type || 'info', related_application_id || null]
     );
 
     res.status(201).json({ 
       success: true, 
-      notification_id: result.insertId,
+      notification_id: result.rows[0].notification_id,
       message: 'Notification created successfully' 
     });
   } catch (error) {
@@ -109,12 +109,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     const userId = req.user.user_id;
     const notificationId = req.params.id;
 
-    const [result] = await pool.query(
-      `DELETE FROM notifications WHERE notification_id = ? AND user_id = ?`,
+    const result = await pool.query(
+      `DELETE FROM notifications WHERE notification_id = $1 AND user_id = $2`,
       [notificationId, userId]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Notification not found' });
     }
 

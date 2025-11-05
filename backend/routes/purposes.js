@@ -41,8 +41,8 @@ const serializeRequirements = (requirements) => {
 // GET /api/purposes
 router.get('/', async (_req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM purposes ORDER BY created_at DESC');
-    const purposes = rows.map(mapPurposeRow);
+    const rows = await pool.query('SELECT * FROM purposes ORDER BY created_at DESC');
+    const purposes = rows.rows.map(mapPurposeRow);
     res.json({ success: true, purposes });
   } catch (error) {
     console.error('Error fetching purposes:', error);
@@ -62,14 +62,14 @@ router.post('/', async (req, res) => {
     const requirementsJson = serializeRequirements(requirements);
     const generatedCode = code || generateCodeFromName(name);
 
-    const [result] = await pool.query(
+    const result = await pool.query(
       `INSERT INTO purposes (purpose_name, code, description, requirements)
-       VALUES (?, ?, ?, ?)` ,
+       VALUES ($1, $2, $3, $4) RETURNING purpose_id` ,
       [name, generatedCode, description || null, requirementsJson]
     );
 
-    const [rows] = await pool.query('SELECT * FROM purposes WHERE purpose_id = ?', [result.insertId]);
-    const purpose = mapPurposeRow(rows[0]);
+    const rows = await pool.query('SELECT * FROM purposes WHERE purpose_id = $1', [result.rows[0].purpose_id]);
+    const purpose = mapPurposeRow(rows.rows[0]);
 
     res.status(201).json({ success: true, purpose });
   } catch (error) {
@@ -84,29 +84,34 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     const { name, code, description, requirements } = req.body;
 
-    const [existing] = await pool.query('SELECT * FROM purposes WHERE purpose_id = ?', [id]);
-    if (existing.length === 0) {
+    const existing = await pool.query('SELECT * FROM purposes WHERE purpose_id = $1', [id]);
+    if (existing.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Purpose not found' });
     }
 
     const updates = [];
     const params = [];
 
+    let paramIndex = 1;
     if (name !== undefined) {
-      updates.push('purpose_name = ?');
+      updates.push(`purpose_name = $${paramIndex}`);
       params.push(name);
+      paramIndex++;
     }
     if (code !== undefined) {
-      updates.push('code = ?');
+      updates.push(`code = $${paramIndex}`);
       params.push(code);
+      paramIndex++;
     }
     if (description !== undefined) {
-      updates.push('description = ?');
+      updates.push(`description = $${paramIndex}`);
       params.push(description);
+      paramIndex++;
     }
     if (requirements !== undefined) {
-      updates.push('requirements = ?');
+      updates.push(`requirements = $${paramIndex}`);
       params.push(serializeRequirements(requirements));
+      paramIndex++;
     }
 
     if (updates.length === 0) {
@@ -115,10 +120,10 @@ router.put('/:id', async (req, res) => {
 
     params.push(id);
 
-    await pool.query(`UPDATE purposes SET ${updates.join(', ')} WHERE purpose_id = ?`, params);
+    await pool.query(`UPDATE purposes SET ${updates.join(', ')} WHERE purpose_id = $${paramIndex}`, params);
 
-    const [rows] = await pool.query('SELECT * FROM purposes WHERE purpose_id = ?', [id]);
-    const purpose = mapPurposeRow(rows[0]);
+    const rows = await pool.query('SELECT * FROM purposes WHERE purpose_id = $1', [id]);
+    const purpose = mapPurposeRow(rows.rows[0]);
 
     res.json({ success: true, purpose });
   } catch (error) {
@@ -132,12 +137,12 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [existing] = await pool.query('SELECT * FROM purposes WHERE purpose_id = ?', [id]);
-    if (existing.length === 0) {
+    const existing = await pool.query('SELECT * FROM purposes WHERE purpose_id = $1', [id]);
+    if (existing.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Purpose not found' });
     }
 
-    await pool.query('DELETE FROM purposes WHERE purpose_id = ?', [id]);
+    await pool.query('DELETE FROM purposes WHERE purpose_id = $1', [id]);
     res.json({ success: true, message: 'Purpose deleted successfully' });
   } catch (error) {
     console.error('Error deleting purpose:', error);
@@ -152,7 +157,7 @@ router.get('/:id/requirements', async (req, res) => {
 
     // The table uses service_id, not purpose_id
     // For now, we'll use service_id = 1 (Certificate of Confirmation)
-    const [requirements] = await pool.query(
+    const requirements = await pool.query(
       `SELECT 
         requirement_id,
         name as requirement_name,
@@ -162,13 +167,12 @@ router.get('/:id/requirements', async (req, res) => {
         max_file_size_mb
        FROM document_requirements 
        WHERE service_id = 1 AND is_active = TRUE 
-       ORDER BY requirement_id`,
-      []
+       ORDER BY requirement_id`
     );
 
     res.json({ 
       success: true, 
-      requirements 
+      requirements: requirements.rows 
     });
   } catch (error) {
     console.error('Error fetching requirements:', error);
