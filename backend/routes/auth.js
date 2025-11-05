@@ -94,7 +94,7 @@ router.post('/login', async (req, res) => {
     if (users.rows.length === 0) {
       // Check if user is pending approval
       const pendingUsers = await pool.query(
-        'SELECT * FROM user_registrations WHERE email = $1 AND registration_status = $2',
+        'SELECT * FROM pending_registrations WHERE email = $1 AND registration_status = $2',
         [email, 'pending']
       );
 
@@ -114,7 +114,7 @@ router.post('/login', async (req, res) => {
     const user = users.rows[0];
 
     // Compare password
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!isMatch) {
       return res.status(401).json({
