@@ -25,7 +25,7 @@ router.get('/search', authMiddleware, async (req, res) => {
     const searchTerm = `%${term}%`;
 
     // Search in the complete genealogy view
-    const [records] = await db.query(`
+    const records = await pool.query(`
       SELECT 
         genealogy_id,
         full_name,
@@ -47,22 +47,22 @@ router.get('/search', authMiddleware, async (req, res) => {
         is_verified
       FROM v_genealogy_complete
       WHERE 
-        full_name LIKE ? OR
-        last_name LIKE ? OR
-        father_name LIKE ? OR
-        mother_name LIKE ? OR
-        paternal_grandfather_name LIKE ? OR
-        paternal_grandmother_name LIKE ? OR
-        maternal_grandfather_name LIKE ? OR
-        maternal_grandmother_name LIKE ?
+        full_name LIKE $1 OR
+        last_name LIKE $2 OR
+        father_name LIKE $3 OR
+        mother_name LIKE $4 OR
+        paternal_grandfather_name LIKE $5 OR
+        paternal_grandmother_name LIKE $6 OR
+        maternal_grandfather_name LIKE $7 OR
+        maternal_grandmother_name LIKE $8
       ORDER BY generation_level DESC, last_name
       LIMIT 50
     `, [searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm]);
 
     res.json({
       success: true,
-      count: records.length,
-      records: records
+      count: records.rows.length,
+      records: records.rows
     });
 
   } catch (error) {
@@ -83,7 +83,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
 
     // Get the person's complete record
-    const [person] = await db.query(`
+    const [person] = await pool.query(`
       SELECT * FROM v_genealogy_complete
       WHERE genealogy_id = ?
     `, [id]);
@@ -96,7 +96,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     }
 
     // Get all relationships
-    const [relationships] = await db.query(`
+    const [relationships] = await pool.query(`
       SELECT 
         gr.relationship_id,
         gr.relationship_type,
@@ -143,7 +143,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // @desc    Create a new genealogy record
 // @access  Private
 router.post('/create', authMiddleware, async (req, res) => {
-  const connection = await db.getConnection();
+  const connection = await pool.connect();
   
   try {
     await connection.beginTransaction();
@@ -262,7 +262,7 @@ router.post('/create', authMiddleware, async (req, res) => {
 // @desc    Add yourself to an existing family tree
 // @access  Private
 router.post('/:id/add-member', authMiddleware, async (req, res) => {
-  const connection = await db.getConnection();
+  const connection = await pool.connect();
   
   try {
     await connection.beginTransaction();
@@ -390,7 +390,7 @@ router.post('/:id/add-member', authMiddleware, async (req, res) => {
 // @access  Private
 router.get('/admin/stats', authMiddleware, async (req, res) => {
   try {
-    const [stats] = await db.query(`
+    const [stats] = await pool.query(`
       SELECT 
         COUNT(*) as total_records,
         COUNT(DISTINCT ethnicity) as total_ethnicities,
@@ -402,7 +402,7 @@ router.get('/admin/stats', authMiddleware, async (req, res) => {
       FROM genealogy_records
     `);
 
-    const [ethnicityBreakdown] = await db.query(`
+    const [ethnicityBreakdown] = await pool.query(`
       SELECT ethnicity, COUNT(*) as count
       FROM genealogy_records
       WHERE ethnicity IS NOT NULL
