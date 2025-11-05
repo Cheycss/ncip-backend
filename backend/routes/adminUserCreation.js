@@ -35,18 +35,17 @@ router.post('/send-user-verification', async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-    // Delete any existing unused codes (no user_id yet, store in temp way)
-    // Note: For admin creation, we can't use user_id since user doesn't exist yet
-    // We'll use a workaround: store with user_id = NULL and email in code field prefix
+    // Delete any existing unused codes for this email
+    // For admin creation, we store the email directly since user doesn't exist yet
     await pool.query(
-      'DELETE FROM verification_codes WHERE user_id IS NULL AND code_type = $1 AND is_used = FALSE',
-      ['admin_create:' + email]
+      'DELETE FROM verification_codes WHERE email = $1 AND code_type = $2 AND is_used = FALSE',
+      [email, 'admin_create']
     );
 
-    // Insert new verification code
+    // Insert new verification code with email (no user_id needed yet)
     const result = await pool.query(
-      'INSERT INTO verification_codes (user_id, code, code_type, expires_at) VALUES (NULL, $1, $2, $3) RETURNING code_id',
-      [code, 'admin_create:' + email, expiresAt]
+      'INSERT INTO verification_codes (email, code, code_type, expires_at, is_used) VALUES ($1, $2, $3, $4, FALSE) RETURNING code_id',
+      [email, code, 'admin_create', expiresAt]
     );
     
     // Send verification code via email
@@ -129,8 +128,8 @@ router.post('/verify-and-create-user', async (req, res) => {
 
     // Find valid verification code
     const verificationRecords = await pool.query(
-      'SELECT * FROM verification_codes WHERE code = $1 AND code_type = $2 AND is_used = FALSE',
-      [code, 'admin_create:' + email]
+      'SELECT * FROM verification_codes WHERE email = $1 AND code = $2 AND code_type = $3 AND is_used = FALSE',
+      [email, code, 'admin_create']
     );
     
     if (verificationRecords.rows.length === 0) {
@@ -254,14 +253,14 @@ router.post('/resend-user-verification', async (req, res) => {
     
     // Delete old codes
     await pool.query(
-      'DELETE FROM verification_codes WHERE user_id IS NULL AND code_type = $1 AND is_used = FALSE',
-      ['admin_create:' + email]
+      'DELETE FROM verification_codes WHERE email = $1 AND code_type = $2 AND is_used = FALSE',
+      [email, 'admin_create']
     );
     
     // Insert new code
     const result = await pool.query(
-      'INSERT INTO verification_codes (user_id, code, code_type, expires_at) VALUES (NULL, $1, $2, $3) RETURNING code_id',
-      [code, 'admin_create:' + email, expiresAt]
+      'INSERT INTO verification_codes (email, code, code_type, expires_at, is_used) VALUES ($1, $2, $3, $4, FALSE) RETURNING code_id',
+      [email, code, 'admin_create', expiresAt]
     );
     
     // Send new code
