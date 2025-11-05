@@ -20,19 +20,19 @@ router.post('/request-verification', async (req, res) => {
     }
 
     // Find user by email
-    const [users] = await pool.execute(
-      'SELECT user_id, username, first_name, last_name, email, password_hash, role, is_active, is_approved FROM users WHERE email = ?',
+    const users = await pool.query(
+      'SELECT user_id, username, first_name, last_name, email, password_hash, role, is_active, is_approved FROM users WHERE email = $1',
       [email]
     );
     
-    if (users.length === 0) {
+    if (users.rows.length === 0) {
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid email or password' 
       });
     }
     
-    const user = users[0];
+    const user = users.rows[0];
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
@@ -55,16 +55,16 @@ router.post('/request-verification', async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Delete any existing unused codes for this email and type
-    await pool.execute(
-      'DELETE FROM verification_codes WHERE email = ? AND type = ? AND used = FALSE',
-      [email, 'login']
+    // Delete any existing unused codes for this user and type
+    await pool.query(
+      'DELETE FROM verification_codes WHERE user_id = $1 AND code_type = $2 AND is_used = FALSE',
+      [user.user_id, 'login']
     );
 
     // Insert new verification code
-    const [result] = await pool.execute(
-      'INSERT INTO verification_codes (email, code, type, expires_at) VALUES (?, ?, ?, ?)',
-      [email, code, 'login', expiresAt]
+    const result = await pool.query(
+      'INSERT INTO verification_codes (user_id, code, code_type, expires_at) VALUES ($1, $2, $3, $4) RETURNING code_id',
+      [user.user_id, code, 'login', expiresAt]
     );
     
     // Send verification code via email
@@ -76,9 +76,9 @@ router.post('/request-verification', async (req, res) => {
 
     if (!emailResult.success) {
       // If email fails, delete the verification code
-      await pool.execute(
-        'DELETE FROM verification_codes WHERE id = ?',
-        [result.insertId]
+      await pool.query(
+        'DELETE FROM verification_codes WHERE code_id = $1',
+        [result.rows[0].code_id]
       );
       return res.status(500).json({ 
         success: false, 
@@ -123,25 +123,27 @@ router.post('/verify-login', async (req, res) => {
     }
 
     // Find valid verification code
-    const [verificationRecords] = await pool.execute(
-      'SELECT * FROM verification_codes WHERE email = ? AND code = ? AND type = ? AND used = FALSE',
+    const verificationRecords = await pool.query(
+      `SELECT vc.*, u.email FROM verification_codes vc 
+       JOIN users u ON vc.user_id = u.user_id 
+       WHERE u.email = $1 AND vc.code = $2 AND vc.code_type = $3 AND vc.is_used = FALSE`,
       [email, code, 'login']
     );
     
-    if (verificationRecords.length === 0) {
+    if (verificationRecords.rows.length === 0) {
       return res.status(400).json({ 
         success: false, 
         message: 'Invalid or expired verification code' 
       });
     }
 
-    const verificationRecord = verificationRecords[0];
+    const verificationRecord = verificationRecords.rows[0];
 
     // Check if code is expired
     if (new Date() > new Date(verificationRecord.expires_at)) {
-      await pool.execute(
-        'DELETE FROM verification_codes WHERE id = ?',
-        [verificationRecord.id]
+      await pool.query(
+        'DELETE FROM verification_codes WHERE code_id = $1',
+        [verificationRecord.code_id]
       );
       return res.status(400).json({ 
         success: false, 
@@ -150,25 +152,25 @@ router.post('/verify-login', async (req, res) => {
     }
 
     // Mark code as used
-    await pool.execute(
-      'UPDATE verification_codes SET used = TRUE WHERE id = ?',
-      [verificationRecord.id]
+    await pool.query(
+      'UPDATE verification_codes SET is_used = TRUE WHERE code_id = $1',
+      [verificationRecord.code_id]
     );
 
     // Get user details
-    const [users] = await pool.execute(
-      'SELECT user_id, username, first_name, last_name, email, password_hash, role, is_active, is_approved FROM users WHERE email = ?',
+    const users = await pool.query(
+      'SELECT user_id, username, first_name, last_name, email, password_hash, role, is_active, is_approved FROM users WHERE email = $1',
       [email]
     );
     
-    if (users.length === 0) {
+    if (users.rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'User not found' 
       });
     }
     
-    const user = users[0];
+    const user = users.rows[0];
 
     // Generate JWT token
     const token = jwt.sign(
@@ -225,34 +227,34 @@ router.post('/resend-code', async (req, res) => {
     }
 
     // Check if user exists
-    const [users] = await pool.execute(
-      'SELECT user_id, username, first_name, last_name, email, password_hash, role, is_active, is_approved FROM users WHERE email = ?',
+    const users = await pool.query(
+      'SELECT user_id, username, first_name, last_name, email, password_hash, role, is_active, is_approved FROM users WHERE email = $1',
       [email]
     );
     
-    if (users.length === 0) {
+    if (users.rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'User not found' 
       });
     }
     
-    const user = users[0];
+    const user = users.rows[0];
 
     // Generate verification code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Delete any existing unused codes for this email and type
-    await pool.execute(
-      'DELETE FROM verification_codes WHERE email = ? AND type = ? AND used = FALSE',
-      [email, 'login']
+    // Delete any existing unused codes for this user and type
+    await pool.query(
+      'DELETE FROM verification_codes WHERE user_id = $1 AND code_type = $2 AND is_used = FALSE',
+      [user.user_id, 'login']
     );
 
     // Insert new verification code
-    const [result] = await pool.execute(
-      'INSERT INTO verification_codes (email, code, type, expires_at) VALUES (?, ?, ?, ?)',
-      [email, code, 'login', expiresAt]
+    const result = await pool.query(
+      'INSERT INTO verification_codes (user_id, code, code_type, expires_at) VALUES ($1, $2, $3, $4) RETURNING code_id',
+      [user.user_id, code, 'login', expiresAt]
     );
     
     // Send new code
@@ -263,9 +265,9 @@ router.post('/resend-code', async (req, res) => {
     );
 
     if (!emailResult.success) {
-      await pool.execute(
-        'DELETE FROM verification_codes WHERE id = ?',
-        [result.insertId]
+      await pool.query(
+        'DELETE FROM verification_codes WHERE code_id = $1',
+        [result.rows[0].code_id]
       );
       return res.status(500).json({ 
         success: false, 
