@@ -91,6 +91,11 @@ router.post('/login', async (req, res) => {
       [email]
     );
 
+    // Debug: Log what columns we got
+    if (users.rows.length > 0) {
+      console.log('User columns available:', Object.keys(users.rows[0]));
+    }
+
     if (users.rows.length === 0) {
       // Check if user is pending approval
       const pendingUsers = await pool.query(
@@ -113,8 +118,18 @@ router.post('/login', async (req, res) => {
 
     const user = users.rows[0];
 
-    // Compare password
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    // Compare password - check which column exists
+    const userPassword = user.password_hash || user.password || user.passwordHash;
+    
+    if (!userPassword) {
+      console.error('No password field found in user object:', Object.keys(user));
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error. Please contact administrator.'
+      });
+    }
+    
+    const isMatch = await bcrypt.compare(password, userPassword);
 
     if (!isMatch) {
       return res.status(401).json({
