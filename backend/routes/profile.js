@@ -80,63 +80,62 @@ router.put('/', authMiddleware, async (req, res) => {
       userParams.push(first_name);
     }
     if (last_name !== undefined) {
-      userUpdates.push('last_name = $2');
-      userUpdates.push('last_name = ?');
+      userUpdates.push(`last_name = $${userParams.length + 1}`);
       userParams.push(last_name);
     }
     if (phone_number !== undefined) {
-      userUpdates.push('phone_number = ?');
+      userUpdates.push(`phone_number = $${userParams.length + 1}`);
       userParams.push(phone_number);
     }
     if (address !== undefined) {
-      userUpdates.push('address = ?');
+      userUpdates.push(`address = $${userParams.length + 1}`);
       userParams.push(address);
     }
 
     if (userUpdates.length > 0) {
       userParams.push(userId);
       await pool.query(
-        `UPDATE users SET ${userUpdates.join(', ')} WHERE user_id = ?`,
+        `UPDATE users SET ${userUpdates.join(', ')} WHERE user_id = $${userParams.length}`,
         userParams
       );
     }
 
     // Update or insert user_profiles table
-    const [existingProfile] = await pool.query(
-      'SELECT profile_id FROM user_profiles WHERE user_id = ?',
+    const existingProfile = await pool.query(
+      'SELECT profile_id FROM user_profiles WHERE user_id = $1',
       [userId]
     );
 
-    if (existingProfile.length > 0) {
+    if (existingProfile.rows.length > 0) {
       // Update existing profile
       const profileUpdates = [];
       const profileParams = [];
 
       if (display_name !== undefined) {
-        profileUpdates.push('display_name = ?');
+        profileUpdates.push(`display_name = $${profileParams.length + 1}`);
         profileParams.push(display_name);
       }
       if (nickname !== undefined) {
-        profileUpdates.push('nickname = ?');
+        profileUpdates.push(`nickname = $${profileParams.length + 1}`);
         profileParams.push(nickname);
       }
       if (position !== undefined) {
-        profileUpdates.push('position = ?');
+        profileUpdates.push(`position = $${profileParams.length + 1}`);
         profileParams.push(position);
       }
       if (avatar_url !== undefined) {
-        profileUpdates.push('avatar_url = ?');
+        profileUpdates.push(`avatar_url = $${profileParams.length + 1}`);
         profileParams.push(avatar_url);
       }
       if (bio !== undefined) {
-        profileUpdates.push('bio = ?');
+        profileUpdates.push(`bio = $${profileParams.length + 1}`);
         profileParams.push(bio);
       }
 
       if (profileUpdates.length > 0) {
         profileParams.push(userId);
         await pool.query(
-          `UPDATE user_profiles SET ${profileUpdates.join(', ')} WHERE user_id = ?`,
+          `UPDATE user_profiles SET ${profileUpdates.join(', ')} WHERE user_id = $${profileParams.length}`,
           profileParams
         );
       }
@@ -144,27 +143,27 @@ router.put('/', authMiddleware, async (req, res) => {
       // Insert new profile
       await pool.query(
         `INSERT INTO user_profiles (user_id, display_name, nickname, position, avatar_url, bio) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6)`,
         [userId, display_name || null, nickname || null, position || null, avatar_url || null, bio || null]
       );
     }
 
     // Fetch updated profile
-    const [users] = await pool.query(
+    const users = await pool.query(
       `SELECT user_id, username, first_name, last_name, email, phone_number, address, role, created_at 
-       FROM users WHERE user_id = ?`,
+       FROM users WHERE user_id = $1`,
       [userId]
     );
 
-    const [profiles] = await pool.query(
+    const profiles = await pool.query(
       `SELECT display_name, nickname, position, avatar_url, bio 
-       FROM user_profiles WHERE user_id = ?`,
+       FROM user_profiles WHERE user_id = $1`,
       [userId]
     );
 
     const profile = {
-      ...users[0],
-      ...(profiles.length > 0 ? profiles[0] : {})
+      ...users.rows[0],
+      ...(profiles.rows.length > 0 ? profiles.rows[0] : {})
     };
 
     res.json({ success: true, profile, message: 'Profile updated successfully' });
@@ -188,33 +187,33 @@ router.post('/avatar', authMiddleware, async (req, res) => {
     // Create user_profiles table if it doesn't exist
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_profiles (
-        profile_id INT PRIMARY KEY AUTO_INCREMENT,
+        profile_id SERIAL PRIMARY KEY,
         user_id INT UNIQUE NOT NULL,
         display_name VARCHAR(150),
         nickname VARCHAR(100),
         position VARCHAR(100),
-        avatar_url LONGTEXT,
+        avatar_url TEXT,
         bio TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
       )
     `);
 
     // Check if profile exists
-    const [existingProfile] = await pool.query(
-      'SELECT profile_id FROM user_profiles WHERE user_id = ?',
+    const existingProfile = await pool.query(
+      'SELECT profile_id FROM user_profiles WHERE user_id = $1',
       [userId]
     );
 
-    if (existingProfile.length > 0) {
+    if (existingProfile.rows.length > 0) {
       await pool.query(
-        'UPDATE user_profiles SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+        'UPDATE user_profiles SET avatar_url = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2',
         [avatar_data, userId]
       );
     } else {
       await pool.query(
-        'INSERT INTO user_profiles (user_id, avatar_url) VALUES (?, ?)',
+        'INSERT INTO user_profiles (user_id, avatar_url) VALUES ($1, $2)',
         [userId, avatar_data]
       );
     }
