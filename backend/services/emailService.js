@@ -46,7 +46,7 @@ const sendVerificationCode = async (email, code, firstName = '') => {
     const msg = {
       to: email,
       from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-      subject: 'NCIP Portal - Login Verification Code',
+      subject: 'NCIP, Alabel Sarangani - Login Verification Code',
       html: getVerificationEmailHTML(code, firstName)
     };
     
@@ -110,12 +110,13 @@ const getVerificationEmailHTML = (code, firstName = '') => {
             width: 80px;
             height: 80px;
             margin: 0 auto;
-            background: linear-gradient(135deg, #1e40af, #3b82f6);
+            background: #10b981;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 40px;
+            color: white;
           }
           .content {
             padding: 20px 40px 40px;
@@ -182,28 +183,30 @@ const getVerificationEmailHTML = (code, firstName = '') => {
           </div>
           
           <div class="content">
-            <h1 class="title">Please verify your identity${firstName ? ', ' + firstName : ''}</h1>
+            <h1 class="title">Verify Your Login${firstName ? ', ' + firstName : ''}</h1>
             
-            <p class="message">Here is your NCIP Portal authentication code:</p>
+            <p class="message">Welcome to the NCIP Alabel Sarangani Digital Services Portal. To complete your secure login, please enter the verification code below:</p>
             
             <div class="code-box">
               <div class="code">${code}</div>
             </div>
             
-            <p class="info-text">This code is valid for <strong>15 minutes</strong> and can only be used once.</p>
+            <p class="info-text">⏱️ This code expires in <strong>15 minutes</strong> and can only be used once.</p>
             
-            <p class="info-text">Please don't share this code with anyone; we'll never ask for it on the phone or via email.</p>
+            <p class="info-text">🔒 <strong>Security Reminder:</strong> Never share this code with anyone. NCIP staff will never ask for your verification code.</p>
+            
+            <p class="info-text">📧 <strong>Can't see this code?</strong> Please check your spam or junk folder if you don't see this email in your inbox.</p>
             
             <p class="warning">
-              Thanks,<br>
-              The NCIP Portal Team
+              Thank you for using our services,<br>
+              <strong>NCIP Alabel Sarangani Digital Services Team</strong>
             </p>
           </div>
           
           <div class="footer">
-            <p>You're receiving this email because a verification code was requested for your</p>
-            <p>NCIP Portal account. If this wasn't you, please ignore this email.</p>
-            <p style="margin-top: 12px;">© 2024 National Commission on Indigenous Peoples - Alabel, Sarangani Province</p>
+            <p>You're receiving this email because a verification code was requested for your account at</p>
+            <p><strong>NCIP Alabel Sarangani Digital Services Portal</strong></p>
+            <p style="margin-top: 12px;">© 2025 National Commission on Indigenous Peoples - Alabel, Sarangani Province</p>
           </div>
         </div>
       </body>
@@ -367,21 +370,23 @@ const getRegistrationEmailHTML = (code, firstName = '') => {
           </div>
           
           <div class="content">
-            <h1 class="title">Welcome to NCIP Portal${firstName ? ', ' + firstName : ''}</h1>
+            <h1 class="title">Welcome to NCIP Alabel Sarangani Portal${firstName ? ', ' + firstName : ''}</h1>
             
-            <p class="message">Here is your registration verification code:</p>
+            <p class="message">Thank you for registering with the NCIP Alabel Sarangani Digital Services Portal. To complete your registration, please enter the verification code below:</p>
             
             <div class="code-box">
               <div class="code">${code}</div>
             </div>
             
-            <p class="info-text">This code is valid for <strong>15 minutes</strong> and can only be used once.</p>
+            <p class="info-text">⏱️ This code expires in <strong>15 minutes</strong> and can only be used once.</p>
             
-            <p class="info-text">Please don't share this code with anyone; we'll never ask for it on the phone or via email.</p>
+            <p class="info-text">🔒 <strong>Security Reminder:</strong> Never share this code with anyone. NCIP staff will never ask for your verification code.</p>
+            
+            <p class="info-text">📧 <strong>Important:</strong> If you can't find this email in your inbox, please check your spam or junk folder.</p>
             
             <p class="warning">
-              Thanks,<br>
-              The NCIP Portal Team
+              Thank you for choosing our services,<br>
+              <strong>NCIP Alabel Sarangani Digital Services Team</strong>
             </p>
           </div>
           
@@ -509,7 +514,7 @@ const sendRejectionEmail = async (email, fullName, adminComment) => {
             
             <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
               If you have questions about the registration requirements, please contact our support team.<br>
-              <strong>NCIP Digital Services Team</strong>
+              <strong>NCIP Alabel Sarangani Digital Services Team</strong>
             </p>
           </div>
         </div>
