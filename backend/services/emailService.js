@@ -33,9 +33,11 @@ const createTransporter = () => {
     tls: {
       rejectUnauthorized: false // Allow self-signed certificates
     },
-    connectionTimeout: 10000, // 10 seconds
-    greetingTimeout: 10000,
-    socketTimeout: 10000
+    connectionTimeout: 30000, // 30 seconds for Render
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
+    logger: false,
+    debug: false
   });
 };
 
@@ -507,10 +509,6 @@ const sendRejectionEmail = async (email, fullName, adminComment) => {
               <p style="color: #0c4a6e; margin: 0; font-weight: 500;">💡 You can use the same email address to register again once you've addressed the noted items.</p>
             </div>
             
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${process.env.FRONTEND_URL || getFrontendUrl()}/register" 
-                 style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Register Again</a>
-            </div>
             
             <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
               If you have questions about the registration requirements, please contact our support team.<br>
