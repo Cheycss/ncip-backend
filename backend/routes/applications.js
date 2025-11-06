@@ -173,65 +173,59 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
 // POST /api/applications - Create new application
 router.post('/', authMiddleware, async (req, res) => {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   
   try {
-    await connection.beginTransaction();
+    await client.query('BEGIN');
     
     const userId = req.user.user_id;
-    const { service_type, purpose, formData } = req.body;
+    const { application_number, service_type, purpose, status, form_data } = req.body;
 
-    // Generate application number
-    const application_number = `NCIP-${Date.now()}`;
+    // Generate application number if not provided
+    const app_number = application_number || `NCIP-${Date.now()}`;
 
     // Insert application
-    const [appResult] = await connection.query(
-      `INSERT INTO applications (user_id, application_number, service_type, purpose, status, submitted_at) 
-       VALUES (?, ?, ?, ?, 'submitted', NOW())`,
-      [userId, application_number, service_type, purpose]
+    const appResult = await client.query(
+      `INSERT INTO applications (user_id, application_number, service_type, purpose, status, form_data, submitted_at, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) 
+       RETURNING application_id, application_number`,
+      [userId, app_number, service_type, purpose, status || 'submitted', JSON.stringify(form_data || {})]
     );
 
-    const applicationId = appResult.insertId;
+    const applicationId = appResult.rows[0].application_id;
+    const returnedAppNumber = appResult.rows[0].application_number;
 
-    // If it's a COC application, insert form data
-    if (service_type === 'Certificate of Confirmation' && formData) {
-      await connection.query(
-        `INSERT INTO coc_forms 
-         (application_id, applicant_name, birth_date, civil_status, province, municipality, barangay, 
-          belonging_location, icc_group, tribe_affiliation, father_name, father_tribe, mother_name, 
-          mother_tribe, years_resident) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          applicationId,
-          formData.applicant_name || null,
-          formData.birth_date || null,
-          formData.civil_status || null,
-          formData.province || 'SARANGANI',
-          formData.municipality || null,
-          formData.barangay || null,
-          formData.belonging_location || null,
-          formData.icc_group || null,
-          formData.tribe_affiliation || null,
-          formData.father_name || null,
-          formData.father_tribe || null,
-          formData.mother_name || null,
-          formData.mother_tribe || null,
-          formData.years_resident || null
-        ]
+    // If it's a COC application, also insert into coc_forms table if it exists
+    if (service_type === 'Certificate of Confirmation' && form_data) {
+      // Check if coc_forms table exists
+      const tableCheck = await client.query(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.tables 
+         WHERE table_schema = 'public' AND table_name = 'coc_forms')`
       );
+      
+      if (tableCheck.rows[0].exists) {
+        await client.query(
+          `INSERT INTO coc_forms 
+           (application_id, form_data, page_number, is_completed, created_at, updated_at) 
+           VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+          [applicationId, JSON.stringify(form_data), 1, true]
+        );
+      }
     }
 
-    await connection.commit();
+    await client.query('COMMIT');
 
     res.status(201).json({
       success: true,
       message: 'Application submitted successfully',
-      application_id: applicationId,
-      application_number
+      application: {
+        application_id: applicationId,
+        application_number: returnedAppNumber
+      }
     });
 
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     console.error('Error creating application:', error);
     res.status(500).json({
       success: false,
@@ -239,7 +233,54 @@ router.post('/', authMiddleware, async (req, res) => {
       error: error.message
     });
   } finally {
-    connection.release();
+    client.release();
+  }
+});
+
+// PUT /api/applications/:id/documents-status - Update application status after document submission (user)
+router.put('/:id/documents-status', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.user_id;
+    const { status, documentsUploaded, uploadedDocuments, documentsSubmittedAt } = req.body;
+
+    // Verify the application belongs to the user
+    const appCheck = await pool.query(
+      'SELECT application_id FROM applications WHERE application_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (appCheck.rows.length === 0) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'You do not have permission to update this application' 
+      });
+    }
+
+    // Update application status to documents_submitted
+    const result = await pool.query(
+      `UPDATE applications 
+       SET status = $1, 
+           updated_at = NOW()
+       WHERE application_id = $2 AND user_id = $3`,
+      ['documents_submitted', id, userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Documents submitted successfully',
+      status: 'documents_submitted'
+    });
+  } catch (error) {
+    console.error('Error updating document submission status:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update document submission status' 
+    });
   }
 });
 
