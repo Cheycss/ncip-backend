@@ -2,8 +2,20 @@ import express from 'express';
 import pool from '../database.js';
 import { sendApprovalEmail, sendRejectionEmail } from '../services/emailService.js';
 import bcrypt from 'bcryptjs';
+import authMiddleware from '../authMiddleware.js';
 
 const router = express.Router();
+
+// Admin middleware to check if user is admin
+const adminMiddleware = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. Admin privileges required.'
+    });
+  }
+  next();
+};
 
 // Submit registration for admin approval (doesn't create user yet)
 router.post('/submit', async (req, res) => {
@@ -83,8 +95,8 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// Get all pending registrations (for admin)
-router.get('/pending', async (req, res) => {
+// Get all pending registrations (admin only)
+router.get('/pending', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const pendingRegistrations = await pool.query(
       `SELECT registration_id, registration_id as id, username, first_name, last_name, email, phone_number, 
@@ -110,7 +122,7 @@ router.get('/pending', async (req, res) => {
 });
 
 // Approve registration (create actual user account)
-router.post('/approve/:id', async (req, res) => {
+router.post('/approve/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -240,7 +252,7 @@ router.post('/approve/:id', async (req, res) => {
 });
 
 // Reject registration with comment
-router.post('/reject/:id', async (req, res) => {
+router.post('/reject/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { comment } = req.body;
@@ -275,13 +287,19 @@ router.post('/reject/:id', async (req, res) => {
 
     // Send rejection email with admin comment
     try {
-      await sendRejectionEmail(
+      const emailResult = await sendRejectionEmail(
         registration.email,
         `${registration.first_name} ${registration.last_name}`,
         comment.trim()
       );
+      console.log('Rejection email result:', emailResult);
     } catch (emailError) {
       console.error('Failed to send rejection email:', emailError);
+      console.error('Email details:', {
+        to: registration.email,
+        name: `${registration.first_name} ${registration.last_name}`,
+        error: emailError.message
+      });
       // Continue even if email fails
     }
 
