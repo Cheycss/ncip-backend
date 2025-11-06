@@ -36,9 +36,10 @@ router.get('/', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Get extended profile info
+    // Get extended profile info (including original and new columns)
     const profiles = await pool.query(
-      `SELECT display_name, nickname, position, avatar_url, bio 
+      `SELECT profile_id, birth_date, gender, tribe_affiliation, contact_person, 
+              emergency_contact, display_name, nickname, position, avatar_url, bio 
        FROM user_profiles WHERE user_id = $1`,
       [userId]
     );
