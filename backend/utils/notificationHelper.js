@@ -11,9 +11,9 @@ import pool from '../database.js';
 export async function sendNotification(userId, title, message, type = 'info', relatedApplicationId = null) {
   try {
     await pool.query(
-      `INSERT INTO notifications (user_id, title, message, type, related_application_id) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [userId, title, message, type, relatedApplicationId]
+      `INSERT INTO notifications (user_id, title, message, type) 
+       VALUES ($1, $2, $3, $4)`,
+      [userId, title, message, type]
     );
     console.log(`✅ Notification sent to user ${userId}: ${title}`);
   } catch (error) {

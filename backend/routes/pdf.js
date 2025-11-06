@@ -114,7 +114,7 @@ router.get('/application/:id', async (req, res) => {
     console.log(`📋 Fetching application data for ID: ${id}`);
     
     // Get application data from database
-    const [rows] = await pool.query(
+    const result = await pool.query(
       `SELECT 
         id,
         user_id,
@@ -129,14 +129,14 @@ router.get('/application/:id', async (req, res) => {
       [id]
     );
 
-    if (rows.length === 0) {
+    if (!result.rows || result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Application not found'
       });
     }
 
-    const application = rows[0];
+    const application = result.rows[0];
     
     // Parse form_data JSON
     let formData = {};
@@ -150,12 +150,12 @@ router.get('/application/:id', async (req, res) => {
     let purpose = null;
     if (application.purpose_id) {
       try {
-        const [purposeRows] = await pool.query(
+        const purposeResult = await pool.query(
           'SELECT purpose_name, code, description FROM purposes WHERE purpose_id = ?',
           [application.purpose_id]
         );
-        if (purposeRows.length > 0) {
-          purpose = purposeRows[0];
+        if (purposeResult.rows.length > 0) {
+          purpose = purposeResult.rows[0];
         }
       } catch (purposeError) {
         console.warn('⚠️ Error fetching purpose:', purposeError.message);

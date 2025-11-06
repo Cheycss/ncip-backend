@@ -54,10 +54,10 @@ const upload = multer({
 // Upload a document for a requirement
 // =============================================
 router.post('/upload', authMiddleware, upload.single('file'), async (req, res) => {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   
   try {
-    await connection.beginTransaction();
+    await client.query('BEGIN');
     
     const userId = req.user.user_id;
     const { application_id, requirement_id } = req.body;
@@ -196,7 +196,7 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
     });
 
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     
     // Delete uploaded file on error
     if (req.file && fs.existsSync(req.file.path)) {
@@ -210,7 +210,7 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
       error: error.message
     });
   } finally {
-    connection.release();
+    client.release();
   }
 });
 

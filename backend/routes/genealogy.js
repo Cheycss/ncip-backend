@@ -83,12 +83,12 @@ router.get('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
 
     // Get the person's complete record
-    const [person] = await pool.query(`
+    const person = await pool.query(`
       SELECT * FROM v_genealogy_complete
-      WHERE genealogy_id = ?
+      WHERE genealogy_id = $1
     `, [id]);
 
-    if (person.length === 0) {
+    if (person.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Genealogy record not found'
@@ -96,7 +96,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     }
 
     // Get all relationships
-    const [relationships] = await pool.query(`
+    const relationships = await pool.query(`
       SELECT 
         gr.relationship_id,
         gr.relationship_type,
@@ -110,7 +110,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
         related.birth_place
       FROM genealogy_relationships gr
       JOIN genealogy_records related ON gr.related_person_id = related.genealogy_id
-      WHERE gr.person_id = ?
+      WHERE gr.person_id = $1
       ORDER BY 
         CASE gr.relationship_type
           WHEN 'father' THEN 1
@@ -185,22 +185,21 @@ router.post('/create', authMiddleware, async (req, res) => {
       });
     }
 
-    // Insert the genealogy record
-    const [result] = await connection.query(`
+    // Insert main person
+    const result = await connection.query(`
       INSERT INTO genealogy_records (
-        full_name, first_name, middle_name, last_name, suffix,
-        birth_date, birth_place, ethnicity, tribe_affiliation,
-        barangay_id, city_id, province_id, current_address,
-        generation_level, gender, is_living, notes, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        first_name, last_name, middle_name, birth_date, birth_place, 
+        gender, tribe_affiliation, father_name, mother_name, spouse_name,
+        generation_level, is_living, notes, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING genealogy_id
     `, [
-      full_name, first_name, middle_name, last_name, suffix,
-      birth_date, birth_place, ethnicity, tribe_affiliation,
-      barangay_id, city_id, province_id, current_address,
+      first_name, last_name, middle_name, birth_date, birth_place,
+      gender, tribe_affiliation, father_name, mother_name, spouse_name,
       generation_level, gender, is_living !== false, notes, req.user.userId
     ]);
 
-    const genealogyId = result.insertId;
+    const genealogyId = result.rows[0].genealogy_id;
 
     // Insert relationships
     const relationships = [];
@@ -234,8 +233,8 @@ router.post('/create', authMiddleware, async (req, res) => {
     await connection.commit();
 
     // Fetch the complete record
-    const [newRecord] = await connection.query(`
-      SELECT * FROM v_genealogy_complete WHERE genealogy_id = ?
+    const newRecord = await connection.query(`
+      SELECT * FROM v_genealogy_complete WHERE genealogy_id = $1
     `, [genealogyId]);
 
     res.status(201).json({
@@ -292,11 +291,11 @@ router.post('/:id/add-member', authMiddleware, async (req, res) => {
     } = req.body;
 
     // Verify reference person exists
-    const [refPerson] = await connection.query(`
-      SELECT generation_level FROM genealogy_records WHERE genealogy_id = ?
+    const refPerson = await connection.query(`
+      SELECT generation_level FROM genealogy_records WHERE genealogy_id = $1
     `, [id]);
 
-    if (refPerson.length === 0) {
+    if (refPerson.rows.length === 0) {
       await connection.rollback();
       return res.status(404).json({
         success: false,
@@ -312,41 +311,40 @@ router.post('/:id/add-member', authMiddleware, async (req, res) => {
       generation_level -= 1;
     }
 
-    // Create the new person
-    const [result] = await connection.query(`
+    // Insert the new person
+    const result = await connection.query(`
       INSERT INTO genealogy_records (
-        full_name, first_name, middle_name, last_name, suffix,
-        birth_date, birth_place, ethnicity, tribe_affiliation,
-        barangay_id, city_id, province_id, current_address,
-        generation_level, gender, is_living, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        first_name, last_name, middle_name, birth_date, birth_place,
+        gender, tribe_affiliation, father_name, mother_name, spouse_name,
+        generation_level, is_living, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING genealogy_id
     `, [
-      full_name, first_name, middle_name, last_name, suffix,
-      birth_date, birth_place, ethnicity, tribe_affiliation,
-      barangay_id, city_id, province_id, current_address,
+      first_name, last_name, middle_name, birth_date, birth_place,
+      gender, tribe_affiliation, father_name, mother_name, spouse_name,
       generation_level, gender, true, req.user.userId
     ]);
 
-    const newPersonId = result.insertId;
+    const newPersonId = result.rows[0].genealogy_id;
 
     // Create relationship based on type
     if (relationship_to_reference === 'child') {
       // Reference person is parent
       const parentGender = await connection.query(`
-        SELECT gender FROM genealogy_records WHERE genealogy_id = ?
+        SELECT gender FROM genealogy_records WHERE genealogy_id = $1
       `, [id]);
       
       const relationshipType = parentGender[0][0].gender === 'Male' ? 'father' : 'mother';
       
       await connection.query(`
         INSERT INTO genealogy_relationships (person_id, related_person_id, relationship_type, created_by)
-        VALUES (?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4)
       `, [newPersonId, id, relationshipType, req.user.userId]);
 
       // Add other parent if provided
       if (other_parent_id) {
         const otherParentGender = await connection.query(`
-          SELECT gender FROM genealogy_records WHERE genealogy_id = ?
+          SELECT gender FROM genealogy_records WHERE genealogy_id = $1
         `, [other_parent_id]);
         
         const otherRelType = otherParentGender[0][0].gender === 'Male' ? 'father' : 'mother';
@@ -361,8 +359,8 @@ router.post('/:id/add-member', authMiddleware, async (req, res) => {
     await connection.commit();
 
     // Fetch the complete record
-    const [newRecord] = await connection.query(`
-      SELECT * FROM v_genealogy_complete WHERE genealogy_id = ?
+    const newRecord = await connection.query(`
+      SELECT * FROM v_genealogy_complete WHERE genealogy_id = $1
     `, [newPersonId]);
 
     res.status(201).json({
@@ -390,7 +388,7 @@ router.post('/:id/add-member', authMiddleware, async (req, res) => {
 // @access  Private
 router.get('/admin/stats', authMiddleware, async (req, res) => {
   try {
-    const [stats] = await pool.query(`
+    const stats = await pool.query(`
       SELECT 
         COUNT(*) as total_records,
         COUNT(DISTINCT ethnicity) as total_ethnicities,
@@ -402,7 +400,7 @@ router.get('/admin/stats', authMiddleware, async (req, res) => {
       FROM genealogy_records
     `);
 
-    const [ethnicityBreakdown] = await pool.query(`
+    const ethnicityBreakdown = await pool.query(`
       SELECT ethnicity, COUNT(*) as count
       FROM genealogy_records
       WHERE ethnicity IS NOT NULL
