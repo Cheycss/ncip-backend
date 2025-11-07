@@ -8,12 +8,12 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
-import jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';               
 import dotenv from 'dotenv';
 import { generateCertificateNumber } from '../utils/idGenerator.js';
 import { generateCOC, generateCOCNumber } from '../utils/cocGenerator.js';
 
-dotenv.config();
+dotenv.config({ path: './backend/.env' });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,8 +27,20 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Configure Cloudinary storage for production, fallback to disk for local
-const storage = process.env.NODE_ENV === 'production' ? 
+// Debug Cloudinary configuration
+console.log('🔧 Cloudinary Config:', {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'SET' : 'MISSING',
+  api_key: process.env.CLOUDINARY_API_KEY ? 'SET' : 'MISSING',
+  api_secret: process.env.CLOUDINARY_API_SECRET ? 'SET' : 'MISSING',
+  node_env: process.env.NODE_ENV
+});
+
+// Use Cloudinary if credentials are available, otherwise use local storage
+const useCloudinary = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
+console.log('📁 Storage method:', useCloudinary ? 'Cloudinary' : 'Local disk');
+
+// Configure storage - use Cloudinary if available
+const storage = useCloudinary ? 
   new CloudinaryStorage({
     cloudinary: cloudinary,
     params: async (req, file) => {
@@ -36,14 +48,18 @@ const storage = process.env.NODE_ENV === 'production' ?
       const folder = `ncip-applications/${req.user?.user_id || 'temp'}`;
       const publicId = `${file.fieldname}_${timestamp}`;
       
+      console.log('📁 Uploading to Cloudinary:', { folder, publicId, filename: file.originalname });
+      
       return {
         folder: folder,
         public_id: publicId,
         resource_type: 'auto',
-        allowed_formats: ['jpg', 'jpeg', 'png', 'pdf']
+        allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+        access_mode: 'public'
       };
     }
-  }) : 
+  }) :
+  
   multer.diskStorage({
     destination: function (req, file, cb) {
       const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
@@ -547,18 +563,35 @@ router.get('/documents/view/:applicationId/:fileName', async (req, res) => {
     }
     
     const document = docResult.rows[0];
-    const filePath = path.resolve(document.file_path);
+    const filePath = document.file_path;
     
-    console.log('Sending file:', filePath);
+    console.log('Document file path:', filePath);
     
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      console.error('File not found on disk:', filePath);
-      return res.status(404).json({ success: false, message: 'File not found on disk' });
+    // Check if file_path is a URL (Cloudinary) or local path
+    if (!filePath) {
+      return res.status(404).json({ success: false, message: 'No file path found' });
     }
     
-    // Send file for viewing (not as attachment)
-    res.sendFile(filePath);
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      // Cloudinary URL - redirect to it
+      console.log('✅ Redirecting to Cloudinary URL:', filePath);
+      return res.redirect(filePath);
+    } else {
+      // Local file path
+      const resolvedPath = path.resolve(filePath);
+      console.log('Checking local file:', resolvedPath);
+      
+      if (fs.existsSync(resolvedPath)) {
+        console.log('Sending local file:', resolvedPath);
+        return res.sendFile(resolvedPath);
+      } else {
+        console.error('File not found on disk:', resolvedPath);
+        return res.status(404).json({ 
+          success: false, 
+          message: 'File not found. Old files need to be reuploaded.' 
+        });
+      }
+    }
     
   } catch (error) {
     console.error('Document view error:', error);
