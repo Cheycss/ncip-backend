@@ -2,11 +2,25 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
 import jwt from 'jsonwebtoken';
 import pool from '../database.js';
 import authMiddleware from '../authMiddleware.js';
 
 const router = express.Router();
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+console.log('📁 Documents.js - Cloudinary configured:', {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'SET' : 'MISSING',
+  api_key: process.env.CLOUDINARY_API_KEY ? 'SET' : 'MISSING',
+  api_secret: process.env.CLOUDINARY_API_SECRET ? 'SET' : 'MISSING'
+});
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
@@ -392,12 +406,12 @@ router.get('/requirement/:id/view', async (req, res) => {
     
     const document = result.rows[0];
     
-    // Check if file_path is a URL (Cloudinary) or local path
+        // Check if file_path is a URL (Cloudinary) or local path
     if (document.file_path) {
       if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
-        // Cloudinary URL - redirect to it
-        console.log('Redirecting to Cloudinary URL:', document.file_path);
-        res.redirect(document.file_path);
+        // Cloudinary URL - direct redirect (works with 'Strict transformations: Disabled')
+        console.log('✅ Redirecting to Cloudinary URL:', document.file_path);
+        return res.redirect(document.file_path);
       } else if (fs.existsSync(document.file_path)) {
         // Local file - send it
         console.log('Sending local file:', document.file_path);

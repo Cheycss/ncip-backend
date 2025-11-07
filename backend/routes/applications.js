@@ -55,7 +55,10 @@ const storage = useCloudinary ?
         public_id: publicId,
         resource_type: 'auto',
         allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
-        access_mode: 'public'
+        access_mode: 'public',
+        type: 'upload',
+        delivery_type: 'upload',
+        format: file.mimetype.includes('pdf') ? 'pdf' : undefined
       };
     }
   }) :
