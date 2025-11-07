@@ -392,10 +392,22 @@ router.get('/requirement/:id/view', async (req, res) => {
     
     const document = result.rows[0];
     
-    if (document.file_path && fs.existsSync(document.file_path)) {
-      res.sendFile(path.resolve(document.file_path));
+    // Check if file_path is a URL (Cloudinary) or local path
+    if (document.file_path) {
+      if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
+        // Cloudinary URL - redirect to it
+        console.log('Redirecting to Cloudinary URL:', document.file_path);
+        res.redirect(document.file_path);
+      } else if (fs.existsSync(document.file_path)) {
+        // Local file - send it
+        console.log('Sending local file:', document.file_path);
+        res.sendFile(path.resolve(document.file_path));
+      } else {
+        console.error('File not found:', document.file_path);
+        res.status(404).json({ success: false, message: 'File not found on server' });
+      }
     } else {
-      res.status(404).json({ success: false, message: 'File not found on server' });
+      res.status(404).json({ success: false, message: 'No file path found' });
     }
   } catch (error) {
     console.error('Error viewing requirement:', error);

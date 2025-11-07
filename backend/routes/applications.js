@@ -6,6 +6,8 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { generateCertificateNumber } from '../utils/idGenerator.js';
@@ -18,22 +20,43 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
-if (!fs.existsSync(uploadsDir)){
-    fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir)
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname))
-  }
+// Configure Cloudinary (use environment variables)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
+
+// Configure Cloudinary storage for production, fallback to disk for local
+const storage = process.env.NODE_ENV === 'production' ? 
+  new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: async (req, file) => {
+      const timestamp = Date.now();
+      const folder = `ncip-applications/${req.user?.user_id || 'temp'}`;
+      const publicId = `${file.fieldname}_${timestamp}`;
+      
+      return {
+        folder: folder,
+        public_id: publicId,
+        resource_type: 'auto',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'pdf']
+      };
+    }
+  }) : 
+  multer.diskStorage({
+    destination: function (req, file, cb) {
+      const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+      if (!fs.existsSync(uploadsDir)){
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      cb(null, uploadsDir)
+    },
+    filename: function (req, file, cb) {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+  });
 
 const upload = multer({ 
   storage: storage,
@@ -145,6 +168,15 @@ router.post('/upload-coc', authMiddleware, upload.fields([
     const documentPromises = Object.entries(req.files).map(([pageKey, fileArray]) => {
       const file = fileArray[0];
       console.log(`Saving document: ${pageKey} - ${file.originalname}`);
+      console.log('File object:', { 
+        path: file.path, 
+        filename: file.filename,
+        cloudinary: file.path ? 'URL' : 'Local'
+      });
+      
+      // Cloudinary stores URL in file.path, local storage stores path in file.path
+      const filePath = file.path || file.filename;
+      
       return pool.query(
         `INSERT INTO documents (
           application_id,
@@ -153,7 +185,7 @@ router.post('/upload-coc', authMiddleware, upload.fields([
           file_name,
           uploaded_at
         ) VALUES ($1, $2, $3, $4, NOW())`,
-        [applicationId, pageKey, file.path, file.originalname]
+        [applicationId, pageKey, filePath, file.originalname]
       );
     });
     
