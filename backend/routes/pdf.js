@@ -11,10 +11,29 @@ const __dirname = path.dirname(__filename);
 // GET /api/pdf/coc-form - Download the COC form template
 router.get('/coc-form', (req, res) => {
   try {
-    const pdfPath = path.join(__dirname, '..', '..', '2025 coc-form- Alabel CSC.pdf');
+    // Try multiple possible paths for the PDF file
+    const possiblePaths = [
+      path.join(__dirname, '..', '2025 coc-form- Alabel CSC.pdf'),
+      path.join(__dirname, '2025 coc-form- Alabel CSC.pdf'),
+      path.join(process.cwd(), 'backend', '2025 coc-form- Alabel CSC.pdf'),
+      path.join(process.cwd(), '2025 coc-form- Alabel CSC.pdf')
+    ];
     
-    // Check if file exists
-    if (!fs.existsSync(pdfPath)) {
+    let pdfPath = null;
+    
+    // Find the first existing path
+    for (const testPath of possiblePaths) {
+      console.log('Testing PDF path:', testPath);
+      if (fs.existsSync(testPath)) {
+        pdfPath = testPath;
+        console.log('✅ Found PDF at:', pdfPath);
+        break;
+      }
+    }
+    
+    // If no path found, return error
+    if (!pdfPath) {
+      console.log('❌ PDF not found in any of these paths:', possiblePaths);
       return res.status(404).json({ 
         success: false, 
         message: 'COC form template not found' 

@@ -1,5 +1,9 @@
 # Dependencies
 node_modules/
+
+# Keep the COC form PDF
+!backend/2025\ coc-form-\ Alabel\ CSC.pdf
+!2025\ coc-form-\ Alabel\ CSC.pdf
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

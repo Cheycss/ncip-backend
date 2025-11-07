@@ -141,10 +141,29 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Schedule deadline checks every 24 hours
+const checkApplicationDeadlines = async () => {
+  try {
+    console.log('⏰ Running scheduled deadline check...');
+    const response = await fetch(`http://localhost:${process.env.PORT || 3001}/api/applications/check-deadlines`);
+    const result = await response.json();
+    console.log('✅ Deadline check complete:', result.message);
+  } catch (error) {
+    console.error('❌ Failed to check deadlines:', error.message);
+  }
+};
+
+// Run deadline check on server start
+setTimeout(checkApplicationDeadlines, 5000); // Wait 5 seconds after server starts
+
+// Run deadline check every 24 hours
+setInterval(checkApplicationDeadlines, 24 * 60 * 60 * 1000);
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 Frontend URL: ${process.env.FRONTEND_URL}`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV}`);
+  console.log(`⏰ Deadline auto-check scheduled to run daily`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 

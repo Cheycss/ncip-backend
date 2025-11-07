@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import jwt from 'jsonwebtoken';
 import pool from '../database.js';
 import authMiddleware from '../authMiddleware.js';
 
@@ -215,6 +216,28 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
 });
 
 // =============================================
+// GET /api/documents/debug-all - Debug endpoint to see all documents
+// =============================================
+router.get('/debug-all', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT document_id, application_id, document_type, file_name, is_requirement, uploaded_at FROM documents ORDER BY document_id DESC LIMIT 20'
+    );
+    res.json({ 
+      success: true, 
+      count: result.rows.length,
+      documents: result.rows 
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// =============================================
 // GET /api/documents/application/:id
 // Get all documents for an application
 // =============================================
@@ -236,31 +259,37 @@ router.get('/application/:id', authMiddleware, async (req, res) => {
       });
     }
 
-    // Get all documents (using correct table name)
+    console.log('='.repeat(60));
+    console.log('🔎 BACKEND: Fetching documents for application:', applicationId);
+    console.log('   User ID:', userId, '| Role:', req.user.role);
+    console.log('='.repeat(60));
+    
+    // Get ONLY requirement documents (not COC form pages)
     const documents = await pool.query(
       `SELECT 
-        ud.id as document_id,
-        ud.requirement_id,
-        ud.document_type as requirement_name,
-        ud.document_type as description,
-        1 as is_mandatory,
-        ud.original_name as original_filename,
-        ud.file_size as file_size_bytes,
-        ud.mime_type as file_type,
-        ud.uploaded_at,
-        ud.upload_status as document_status,
-        ud.reviewed_by,
-        ud.reviewed_at,
-        ud.review_notes,
-        ud.review_notes as rejection_reason,
-        u.first_name as reviewer_first_name,
-        u.last_name as reviewer_last_name
-       FROM uploaded_documents ud
-       LEFT JOIN users u ON ud.reviewed_by = u.user_id
-       WHERE ud.application_id = $1
-       ORDER BY ud.uploaded_at`,
+        d.document_id,
+        d.document_type,
+        d.document_type as requirement_name,
+        d.file_name,
+        d.file_name as original_name,
+        d.file_path,
+        d.is_requirement,
+        d.uploaded_at
+       FROM documents d
+       WHERE d.application_id = $1 AND d.is_requirement = true
+       ORDER BY d.document_id DESC`,
       [applicationId]
     );
+    
+    console.log(`✅ BACKEND RESULT: Found ${documents.rows.length} documents for app ${applicationId}`);
+    if (documents.rows.length > 0) {
+      documents.rows.forEach((doc, idx) => {
+        console.log(`   ${idx + 1}. Doc ID: ${doc.document_id}, Type: ${doc.document_type}, File: ${doc.file_name}`);
+      });
+    } else {
+      console.log('  ⚠️ NO DOCUMENTS found for application', applicationId);
+    }
+    console.log('='.repeat(60));
 
     res.json({
       success: true,
@@ -268,18 +297,115 @@ router.get('/application/:id', authMiddleware, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching documents:', error);
+    console.error('❌ ERROR in /application/:id endpoint:');
+    console.error('  Error message:', error.message);
+    console.error('  Error stack:', error.stack);
+    console.error('  Application ID:', req.params.id);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch documents',
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
 
 // =============================================
+// GET /api/documents/requirement/:id/download
+// Download a requirement document
+// =============================================
+router.get('/requirement/:id/download', async (req, res) => {
+  // Accept token from query or header
+  const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'No token provided' });
+  }
+  
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    
+    const documentId = req.params.id;
+    
+    // Get requirement document from documents table
+    const result = await pool.query(
+      `SELECT d.*, a.user_id
+       FROM documents d
+       JOIN applications a ON d.application_id = a.application_id
+       WHERE d.document_id = $1`,
+      [documentId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+    
+    const document = result.rows[0];
+    
+    // Check if file exists
+    if (document.file_path && fs.existsSync(document.file_path)) {
+      res.download(document.file_path, document.file_name);
+    } else {
+      res.status(404).json({ success: false, message: 'File not found on server' });
+    }
+  } catch (error) {
+    console.error('Error downloading requirement:', error);
+    res.status(500).json({ success: false, message: 'Failed to download document' });
+  }
+});
+
+// =============================================
+// GET /api/documents/requirement/:id/view  
+// View a requirement document
+// =============================================
+router.get('/requirement/:id/view', async (req, res) => {
+  // Accept token from query or header
+  const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'No token provided' });
+  }
+  
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+  } catch (error) {
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+  
+  try {
+    const documentId = req.params.id;
+    
+    // Get requirement document
+    const result = await pool.query(
+      `SELECT d.*, a.user_id
+       FROM documents d
+       JOIN applications a ON d.application_id = a.application_id
+       WHERE d.document_id = $1`,
+      [documentId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+    
+    const document = result.rows[0];
+    
+    if (document.file_path && fs.existsSync(document.file_path)) {
+      res.sendFile(path.resolve(document.file_path));
+    } else {
+      res.status(404).json({ success: false, message: 'File not found on server' });
+    }
+  } catch (error) {
+    console.error('Error viewing requirement:', error);
+    res.status(500).json({ success: false, message: 'Failed to view document' });
+  }
+});
+
+// =============================================
 // GET /api/documents/:id/download
-// Download a specific document
+// Download a specific document (handles both uploaded_documents and documents tables)
 // =============================================
 router.get('/:id/download', authMiddleware, async (req, res) => {
   try {
@@ -430,9 +556,19 @@ router.put('/:id/review', authMiddleware, async (req, res) => {
       });
     }
 
-    // Get document details
+    // Get documents - only select columns we know exist
     const documents = await pool.query(
-      'SELECT * FROM uploaded_documents WHERE id = $1',
+      `SELECT 
+        document_id,
+        application_id,
+        document_type,
+        file_path,
+        file_name,
+        is_requirement,
+        uploaded_at
+      FROM documents 
+      WHERE document_id = $1 
+      ORDER BY document_id DESC`,
       [documentId]
     );
 
